@@ -447,33 +447,68 @@ class MithrilAIIDE {
   async detectIntent(userMessage) {
     const context = this.getCurrentContext();
     
+    // Build detailed context information
+    let contextInfo = `CURRENT CONTEXT:
+- Current file open: ${context.currentFile || 'None'}
+- File path: ${context.currentFilePath || 'None'}
+- Working folder: ${context.workingFolder || 'None'}
+- Has text selected: ${context.hasSelection ? 'YES' : 'NO'}`;
+
+    if (context.hasSelection && context.selectedTextInfo) {
+      contextInfo += `
+- Selected text location: Lines ${context.selectedTextInfo.startLine}-${context.selectedTextInfo.endLine}
+- Selected text length: ${context.selectedTextInfo.text.length} characters
+- Selected text preview: "${context.selectedTextInfo.text.substring(0, 100)}${context.selectedTextInfo.text.length > 100 ? '...' : ''}"`;
+    }
+
+    // Detect context clues in the user message
+    const hasContextualWords = /\b(this|these|that|those|the|selected|highlighted|current)\b/i.test(userMessage);
+    const hasModificationWords = /\b(change|make|set|update|modify|fix|refactor|optimize|edit|color|theme|style)\b/i.test(userMessage);
+    
     const systemPrompt = `You are an intent detection system for an AI IDE. Analyze the user's request and respond with JSON.
 
-CONTEXT:
-- Current file: ${context.currentFile || 'None'}
-- Selected text: ${context.selectedText ? 'Yes' : 'No'}
-- Working folder: ${context.workingFolder || 'None'}
+${contextInfo}
 
 Available tools: ${this.availableTools.join(', ')}
 
 User message: "${userMessage}"
 
+CRITICAL RULES FOR INTENT DETECTION:
+
+1. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
+   - Use "refactor_code" for: "refactor this", "improve these", "clean this up"
+   - Use "fix_issues" for: "fix this", "fix these errors", "debug this"
+   - Use "optimize_code" for: "optimize this", "make this faster", "improve performance"
+   - Use "edit_file" for: "change this", "make this red", "update these colors", "modify this"
+
+2. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
+   - Use "edit_file" for file-wide changes like "make this file pink theme", "update the colors"
+
+3. **SPECIFIC OVERRIDES**:
+   - Color/theme changes to selected text → "edit_file" with target "selection"  
+   - Code improvements to selected text → "refactor_code"
+   - Bug fixes to selected text → "fix_issues"
+   - Performance improvements → "optimize_code"
+   - Questions about code → "chat_response"
+
+4. **FALLBACK**: If unclear, but file is open → "edit_file"
+
 Respond with JSON only:
 {
   "intent": "Brief description",
   "tool": "tool_name",
-  "target": "file|selection|folder|new",
+  "target": "${context.hasSelection ? 'selection' : (context.isFileOpen ? 'file' : 'chat')}",
   "confidence": 0.9
 }
 
 Tool selection rules:
 - Code questions/explanations → "chat_response"
-- File editing/modification → "edit_file" 
+- File editing/modification (including colors, themes, styling) → "edit_file" 
 - New file creation → "create_file"
 - New folder/directory creation → "create_folder"
 - Code analysis → "analyze_code"
 - Code explanation → "explain_code"
-- Code refactoring → "refactor_code"
+- Code refactoring/improvement → "refactor_code"
 - Bug fixing → "fix_issues"
 - Performance optimization → "optimize_code"`;
 
@@ -515,15 +550,17 @@ Tool selection rules:
       console.log('⚙️ - Chunk file:', targetChunk.fileName);
       console.log('⚙️ - Chunk lines:', `${targetChunk.startLine}-${targetChunk.endLine}`);
     } else {
-      // Fallback to editor selection
+      // Fallback to editor selection - use FULL PATH not just filename
       selectedText = this.ideAIManager?.getSelectedText() || '';
-      currentFile = this.ideAIManager?.getCurrentFileName() || '';
+      currentFile = this.ideAIManager?.getCurrentFilePath() || ''; // Get full path instead of just filename
       console.log('⚙️ Using editor selection as context');
+      console.log('⚙️ - Current file FULL PATH:', currentFile);
     }
     
     console.log('⚙️ Context details:');
     console.log('⚙️ - Selected text length:', selectedText.length);
-    console.log('⚙️ - Current file:', currentFile);
+    console.log('⚙️ - Current file (full path):', currentFile);
+    console.log('⚙️ - Current file (name only):', currentFile ? pathUtils.basename(currentFile) : 'None');
     console.log('⚙️ - Tool to execute:', intent.tool);
     console.log('⚙️ - Chat chunks available:', this.chatCodeChunks.length);
     
@@ -537,7 +574,25 @@ Tool selection rules:
           console.log('🔧 Executing edit_file with chunk replacement');
           return await this.executeChunkAction('edit', targetChunk, userMessage);
         }
-        return await this.editFile(currentFile, userMessage, userMessage);
+        
+        // Check if we have a selection and the intent is to edit the selection
+        const context = this.getCurrentContext();
+        if (context.hasSelection && context.selectedTextInfo && intent.target === 'selection') {
+          console.log('🔧 Executing edit_file for selected text');
+          return await this.editSelectedText(context.selectedTextInfo, userMessage);
+        }
+        
+        // Try to extract filename from message if no current file
+        let fileToEdit = currentFile;
+        if (!currentFile || currentFile.length === 0) {
+          const filenameMatch = userMessage.match(/(?:File\s+")([^"]+\.[a-zA-Z0-9]+)(?:")|([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i);
+          if (filenameMatch) {
+            fileToEdit = filenameMatch[1] || filenameMatch[2];
+            console.log('🔧 Detected file edit request for:', fileToEdit);
+          }
+        }
+        
+        return await this.editFile(fileToEdit, userMessage, userMessage);
         
       case 'create_file':
         return await this.executeFileCreation(userMessage);
@@ -573,7 +628,14 @@ Tool selection rules:
           return await this.executeChunkAction('fix', targetChunk, userMessage);
         }
         if (!selectedText) {
-          return 'Please select some code to fix.';
+          // Check if the message contains a file path or filename for file-based fixing
+          const filenameMatch = userMessage.match(/(?:File\s+")([^"]+\.[a-zA-Z0-9]+)(?:")|([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i);
+          if (filenameMatch) {
+            const extractedFilename = filenameMatch[1] || filenameMatch[2];
+            console.log('🔧 Detected file-based fix request for:', extractedFilename);
+            return await this.editFile(extractedFilename, userMessage, userMessage);
+          }
+          return 'Please select some code to fix or specify a filename in your message.';
         }
         return await this.fixIssues(selectedText, userMessage);
         
@@ -771,11 +833,17 @@ Provide a clear, step-by-step explanation of what this code does.`;
 
   // Utility Methods
   getCurrentContext() {
+    const selectedTextInfo = this.ideAIManager?.getSelectedTextWithPosition();
+    
     return {
       currentFile: this.ideAIManager?.getCurrentFileName() || null,
+      currentFilePath: this.ideAIManager?.getCurrentFilePath() || null,
       selectedText: this.ideAIManager?.getSelectedText() || null,
+      selectedTextInfo: selectedTextInfo, // Includes position, lines, etc.
+      hasSelection: !!(selectedTextInfo && selectedTextInfo.text && selectedTextInfo.text.trim().length > 0),
       workingFolder: this.currentFolder,
-      cursorPosition: this.ideAIManager?.getCursorPosition() || null
+      cursorPosition: this.ideAIManager?.getCursorPosition() || null,
+      isFileOpen: !!(this.ideAIManager?.getCurrentFileName())
     };
   }
 
@@ -1916,9 +1984,13 @@ Please reference these code chunks in your response when relevant. You can refer
     console.log(`🔧 Replacement type: ${replacementType}`);
     console.log(`🔧 New code length: ${newCode.length}`);
 
+    // Clean any triple backticks that would comment out code
+    const cleanedNewCode = this.cleanCodeArtifacts(newCode);
+    console.log('🧹 Cleaned chunk replacement content artifacts (backticks removed)');
+
     // Check if the new code is actually different from the original
     const originalCode = chunk.text.trim();
-    const newCodeTrimmed = newCode.trim();
+    const newCodeTrimmed = cleanedNewCode.trim();
     
     if (originalCode === newCodeTrimmed) {
       console.warn('⚠️ AI returned the same code without modifications');
@@ -1951,7 +2023,7 @@ Please reference these code chunks in your response when relevant. You can refer
         const to = { line: chunk.endLine - 1, ch: editor.getLine(chunk.endLine - 1).length };
         
         // Perform replacement
-        editor.replaceRange(newCode, from, to);
+        editor.replaceRange(cleanedNewCode, from, to);
         
         // Refresh editor
         setTimeout(() => {
@@ -1960,7 +2032,7 @@ Please reference these code chunks in your response when relevant. You can refer
         }, 50);
         
         // Update chunk with new code
-        chunk.text = newCode;
+        chunk.text = cleanedNewCode;
         
         // Mark file as dirty and add to history
         if (this.ideAIManager.markFileAsDirty) {
@@ -2203,6 +2275,10 @@ Raw file content:`;
         .replace(/^-{3,}$/gm, '') // Remove horizontal rules
         .replace(/^File:.*$/gm, '') // Remove file labels
         .trim();
+      
+      // Apply final artifact cleaning (including triple backticks)
+      cleanContent = this.cleanCodeArtifacts(cleanContent);
+      console.log('🧹 Applied final artifact cleaning to file content');
       
       // Validate content
       if (!cleanContent || cleanContent.trim().length === 0) {
@@ -2768,6 +2844,20 @@ Provide a detailed technical analysis with actionable insights.`;
     return await this.generateWithModel(this.selectedModel, message, systemPrompt);
   }
 
+  // Simple cleaner to remove triple backticks that comment out code
+  cleanCodeArtifacts(content) {
+    if (!content) return content;
+    
+    // Remove triple backticks that are used for markdown code blocks
+    // but end up commenting out actual code
+    return content
+      .replace(/^```[a-zA-Z]*\s*\n?/gm, '') // Remove opening triple backticks with optional language
+      .replace(/^```\s*\n?/gm, '')          // Remove closing triple backticks
+      .replace(/\n```\s*$/gm, '')           // Remove trailing triple backticks
+      .replace(/```\s*\n/g, '\n')           // Remove inline triple backticks with newlines
+      .replace(/```/g, '');                 // Remove any remaining triple backticks
+  }
+
   async createFile(fileName, content, message) {
     console.log('📝 ==================== CREATE FILE ====================');
     console.log('📝 File name:', fileName);
@@ -2775,6 +2865,10 @@ Provide a detailed technical analysis with actionable insights.`;
     console.log('📝 User message:', message);
 
     try {
+      // Clean any triple backticks that would comment out code
+      const cleanedContent = this.cleanCodeArtifacts(content);
+      console.log('🧹 Cleaned content artifacts (backticks removed)');
+      
       // Get current working directory
       const currentPath = this.currentFolder;
       if (!currentPath) {
@@ -2787,8 +2881,8 @@ Provide a detailed technical analysis with actionable insights.`;
       
       console.log('📝 Creating file at:', newFilePath);
       
-      // Write the file to disk
-      const result = await ipcRenderer.invoke('fs:writeFile', newFilePath, content);
+      // Write the cleaned file to disk
+      const result = await ipcRenderer.invoke('fs:writeFile', newFilePath, cleanedContent);
       
       if (result.success) {
         console.log('✅ File created successfully');
@@ -2817,14 +2911,250 @@ Provide a detailed technical analysis with actionable insights.`;
     }
   }
 
+  async editSelectedText(selectionInfo, userMessage) {
+    console.log('✏️ ==================== EDIT SELECTED TEXT ====================');
+    console.log('✏️ Selection info:', selectionInfo);
+    console.log('✏️ User message:', userMessage);
+
+    if (!this.ideAIManager || !this.ideAIManager.editor) {
+      return '❌ Error: No editor available for text editing.';
+    }
+
+    try {
+      const currentFile = this.ideAIManager.getCurrentFileName();
+      const currentContent = this.ideAIManager.getCurrentFileContent();
+      
+      if (!currentContent) {
+        return '❌ Error: Could not read current file content.';
+      }
+
+      // Generate AI prompt for modifying just the selected text
+      const systemPrompt = `You are a code editor AI. Modify ONLY the selected portion of code according to the user's request.
+
+Current file: ${currentFile}
+Selected text (Lines ${selectionInfo.startLine}-${selectionInfo.endLine}):
+${selectionInfo.text}
+
+User request: "${userMessage}"
+
+CRITICAL INSTRUCTIONS:
+- Modify ONLY the selected text portion
+- Return ONLY the replacement text for the selection
+- DO NOT include the surrounding code
+- DO NOT add explanations or comments
+- Maintain proper indentation and formatting
+- Keep the same general structure unless specifically asked to change it
+
+Modified selected text:`;
+
+      console.log('🤖 Generating modified content for selection...');
+      const modifiedContent = await this.generateWithModel(this.selectedModel, userMessage, systemPrompt);
+      
+      // Clean the AI response
+      let cleanedContent = this.extractCodeFromResponse(modifiedContent);
+      if (!cleanedContent || !cleanedContent.trim()) {
+        cleanedContent = modifiedContent;
+        console.log('✏️ Using entire AI response as replacement content');
+      }
+      
+      // Apply final cleaning
+      cleanedContent = this.cleanCodeArtifacts(cleanedContent);
+      console.log('🧹 Applied artifact cleaning to modified content');
+      
+      // Validate the content
+      if (!cleanedContent || cleanedContent.trim().length === 0) {
+        console.error('❌ AI generated empty content');
+        return '❌ Error: Could not generate valid replacement content. Please try again.';
+      }
+
+      console.log('✏️ Modified content length:', cleanedContent.length);
+      console.log('✏️ Content preview:', cleanedContent.substring(0, 200) + '...');
+
+      // Replace the selected text in the editor
+      console.log('🔄 Replacing selected text in editor...');
+      await this.ideAIManager.editLineRange(
+        selectionInfo.startLine - 1, // Convert to 0-based for CodeMirror
+        selectionInfo.endLine - 1,
+        cleanedContent
+      );
+
+      // Mark file as dirty and save to disk
+      if (this.ideAIManager.markFileAsDirty) {
+        this.ideAIManager.markFileAsDirty();
+      }
+
+      // Save to disk if the file exists
+      const currentFilePath = this.ideAIManager.getCurrentFilePath();
+      if (currentFilePath && !currentFilePath.startsWith('new:')) {
+        console.log('💾 Saving updated file to disk...');
+        const updatedContent = this.ideAIManager.getCurrentFileContent();
+        const writeResult = await ipcRenderer.invoke('fs:writeFile', currentFilePath, updatedContent);
+        
+        if (!writeResult.success) {
+          console.warn('⚠️ Could not save to disk:', writeResult.error);
+        } else {
+          console.log('✅ File saved to disk successfully');
+        }
+      }
+
+      return `✅ Modified selected text in ${currentFile} (Lines ${selectionInfo.startLine}-${selectionInfo.endLine})`;
+
+    } catch (error) {
+      console.error('❌ Error in editSelectedText:', error);
+      return `❌ Error editing selected text: ${error.message}`;
+    }
+  }
+
   async editFile(filePath, changes, message) {
     console.log('✏️ ==================== EDIT FILE ====================');
     console.log('✏️ File path:', filePath);
     console.log('✏️ Changes:', changes);
     console.log('✏️ User message:', message);
 
-    // For now, provide editing suggestions
-    return `File editing suggestions for ${filePath}:\n\n${changes}`;
+    try {
+      // Determine the actual file path
+      let actualFilePath = filePath;
+      
+      if (!filePath || filePath === changes) {
+        console.error('❌ No valid file path provided');
+        return '❌ Error: No file specified for editing.';
+      }
+      
+      // If filePath is just a filename (no path separators), construct full path
+      if (!filePath.includes('/') && !filePath.includes('\\')) {
+        // Try to extract filename from error message first
+        const filenameMatch = message.match(/(?:File\s+")([^"]+\.[a-zA-Z0-9]+)(?:")|([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i);
+        if (filenameMatch) {
+          const extractedFilename = filenameMatch[1] || filenameMatch[2];
+          console.log('✏️ Extracted filename from message:', extractedFilename);
+          
+          // Try to find this file in current folder
+          if (this.currentFolder) {
+            actualFilePath = pathUtils.join(this.currentFolder, extractedFilename);
+            console.log('✏️ Constructed file path from message:', actualFilePath);
+          } else {
+            actualFilePath = extractedFilename;
+          }
+        } else if (this.currentFolder) {
+          // Just use the filename with current folder
+          actualFilePath = pathUtils.join(this.currentFolder, filePath);
+          console.log('✏️ Constructed file path from current folder:', actualFilePath);
+        }
+      }
+      
+      console.log('✏️ Final file path to use:', actualFilePath);
+
+      // Read the file content
+      console.log('📖 Reading file from disk:', actualFilePath);
+      const readResult = await ipcRenderer.invoke('fs:readFile', actualFilePath);
+      
+      if (!readResult.success) {
+        console.error('❌ Failed to read file:', readResult.error);
+        return `❌ Error: Could not read file "${actualFilePath}". Please make sure the file exists and try again.`;
+      }
+
+      const currentContent = readResult.content;
+      console.log('📖 File content read successfully, length:', currentContent.length);
+
+      // Determine if this is a color/theme change request
+      const isColorThemeRequest = /\b(color|theme|pink|red|blue|green|yellow|purple|orange|style|styling|background|foreground)\b/i.test(message);
+      
+      // Generate the appropriate content using AI
+      let systemPrompt;
+      if (isColorThemeRequest) {
+        systemPrompt = `You are a code styling expert. Modify the colors/theme in the provided code file according to the user's request.
+
+Current file: ${pathUtils.basename(actualFilePath)}
+File content:
+${currentContent}
+
+User request: "${message}"
+
+CRITICAL INSTRUCTIONS:
+- Modify colors, themes, or styling as requested
+- Return the COMPLETE updated file content with new colors/styling
+- Maintain all original functionality and structure
+- Focus on color values, theme variables, CSS properties, or style definitions
+- DO NOT add explanations or comments about the changes
+- Return ONLY the raw file content that should replace the entire file
+
+Updated file content with new colors/styling:`;
+      } else {
+        systemPrompt = `You are a code debugging expert. Fix the specific issue in the provided code file.
+
+Current file: ${pathUtils.basename(actualFilePath)}
+File content:
+${currentContent}
+
+User reported issue: "${message}"
+
+CRITICAL INSTRUCTIONS:
+- Fix ONLY the specific issue mentioned
+- Return the COMPLETE corrected file content
+- Maintain all original functionality and structure
+- DO NOT add explanations or comments about the fix
+- Return ONLY the raw file content that should replace the entire file
+
+Fixed file content:`;
+      }
+
+      console.log('🤖 Generating fixed content with AI...');
+      const fixedContent = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+      
+      // Clean the AI response to get pure code
+      let cleanedContent = this.extractCodeFromResponse(fixedContent);
+      if (!cleanedContent || !cleanedContent.trim()) {
+        cleanedContent = fixedContent;
+        console.log('✏️ Using entire AI response as file content');
+      }
+      
+      // Apply final cleaning
+      cleanedContent = this.cleanCodeArtifacts(cleanedContent);
+      console.log('🧹 Applied artifact cleaning to fixed content');
+      
+      // Validate the fixed content
+      if (!cleanedContent || cleanedContent.trim().length === 0) {
+        console.error('❌ AI generated empty content');
+        return '❌ Error: Could not generate valid fixed content. Please try again.';
+      }
+
+      console.log('✏️ Fixed content length:', cleanedContent.length);
+      console.log('✏️ Content preview:', cleanedContent.substring(0, 200) + '...');
+
+      // Write the fixed content back to the file
+      console.log('💾 Writing fixed content to disk...');
+      const writeResult = await ipcRenderer.invoke('fs:writeFile', actualFilePath, cleanedContent);
+      
+      if (!writeResult.success) {
+        console.error('❌ Failed to write file:', writeResult.error);
+        return `❌ Error: Could not save fixed file "${actualFilePath}". ${writeResult.error}`;
+      }
+
+      console.log('✅ File successfully updated on disk');
+
+      // If the file is currently open in the editor, update it
+      if (this.ideAIManager && this.ideAIManager.currentFile === actualFilePath) {
+        console.log('🔄 Updating content in open editor...');
+        await this.ideAIManager.replaceFileContent(cleanedContent);
+      } else {
+        // Open the file in the editor to show the changes
+        console.log('📂 Opening fixed file in editor...');
+        setTimeout(() => {
+          this.openFile(actualFilePath);
+        }, 500);
+      }
+
+      // Refresh file tree
+      setTimeout(() => {
+        this.loadFileTree();
+      }, 300);
+
+      return `✅ Fixed and updated file: ${pathUtils.basename(actualFilePath)}`;
+
+    } catch (error) {
+      console.error('❌ Error in editFile:', error);
+      return `❌ Error editing file: ${error.message}`;
+    }
   }
 
   async readFile(filePath, message) {
@@ -2930,13 +3260,19 @@ Provide helpful, accurate, and detailed assistance.`;
         console.log('🎯 Extraction result:', extractedCode ? 'SUCCESS' : 'FAILED');
         console.log('🎯 Extracted code length:', extractedCode ? extractedCode.length : 'NULL');
         
-        if (extractedCode) {
-          console.log('🎯 Extracted code preview:', extractedCode.substring(0, 200) + '...');
+        // Clean any triple backticks from extracted code
+        const cleanedExtractedCode = extractedCode ? this.cleanCodeArtifacts(extractedCode) : null;
+        if (cleanedExtractedCode !== extractedCode) {
+          console.log('🧹 Cleaned extracted code artifacts (backticks removed)');
+        }
+        
+        if (cleanedExtractedCode) {
+          console.log('🎯 Cleaned code preview:', cleanedExtractedCode.substring(0, 200) + '...');
           
           // Ask user for confirmation
-          const shouldReplace = await this.confirmCodeReplacement(extractedCode, replacementData.selection);
+          const shouldReplace = await this.confirmCodeReplacement(cleanedExtractedCode, replacementData.selection);
           if (shouldReplace) {
-            this.ideAIManager.replaceSelectedCode(extractedCode);
+            this.ideAIManager.replaceSelectedCode(cleanedExtractedCode);
             this.addChatMessage('system', `✅ Code replacement applied to lines ${replacementData.selection.startLine}-${replacementData.selection.endLine}`);
             
             // Track successful replacement
@@ -2945,8 +3281,8 @@ Provide helpful, accurate, and detailed assistance.`;
               fileName: this.ideAIManager.getCurrentFileName(),
               lines: `${replacementData.selection.startLine}-${replacementData.selection.endLine}`,
               oldCode: replacementData.selection.text,
-              newCode: extractedCode,
-              changeSize: extractedCode.length - replacementData.selection.text.length
+              newCode: cleanedExtractedCode,
+              changeSize: cleanedExtractedCode.length - replacementData.selection.text.length
             });
           } else {
             this.addChatMessage('system', '❌ Code replacement cancelled by user');
@@ -3457,6 +3793,89 @@ document.addEventListener('DOMContentLoaded', () => {
   window.mithrilIDE.removeChatCodeChunk = window.mithrilIDE.removeChatCodeChunk.bind(window.mithrilIDE);
   window.mithrilIDE.clearAllChatCodeChunks = window.mithrilIDE.clearAllChatCodeChunks.bind(window.mithrilIDE);
   window.mithrilIDE.toggleAutoReplace = window.mithrilIDE.toggleAutoReplace.bind(window.mithrilIDE);
+  
+  // Expose linting debug methods globally
+  window.testLinting = () => {
+    if (window.mithrilIDE?.ideAIManager?.testLinting) {
+      return window.mithrilIDE.ideAIManager.testLinting();
+    } else {
+      console.log('🔍 Linting test not available');
+    }
+  };
+  
+  window.toggleLinting = () => {
+    if (window.mithrilIDE?.ideAIManager?.toggleLinting) {
+      const enabled = window.mithrilIDE.ideAIManager.toggleLinting();
+      console.log(`🔍 Linting ${enabled ? 'enabled' : 'disabled'}`);
+      return enabled;
+    } else {
+      console.log('🔍 Linting toggle not available');
+    }
+  };
+  
+  window.checkLintingStatus = () => {
+    console.log('🔍 ==================== LINTING STATUS CHECK ====================');
+    console.log('🔍 IDELintingManager exists:', !!window.IDELintingManager);
+    console.log('🔍 CodeMirror exists:', !!window.CodeMirror);
+    console.log('🔍 CodeMirror.lint exists:', !!window.CodeMirror?.lint);
+    console.log('🔍 Current editor exists:', !!window.mithrilIDE?.ideAIManager?.editor);
+    
+    if (window.IDELintingManager) {
+      const testLinter = new IDELintingManager();
+      console.log('🔍 Available linters:', testLinter.getAvailableLinters());
+    }
+    
+    if (window.mithrilIDE?.ideAIManager?.editor) {
+      const editor = window.mithrilIDE.ideAIManager.editor;
+      console.log('🔍 Editor lint option:', editor.getOption('lint'));
+      console.log('🔍 Editor gutters:', editor.getOption('gutters'));
+      console.log('🔍 Editor mode:', editor.getOption('mode'));
+    }
+    
+    if (window.mithrilIDE?.ideAIManager?.lintingManager) {
+      console.log('🔍 Linting manager enabled:', window.mithrilIDE.ideAIManager.lintingManager.isEnabled);
+    }
+    
+    console.log('🔍 ==================== END LINTING STATUS ====================');
+  };
+
+  window.testLintingContextMenu = () => {
+    console.log('🔍 ==================== TESTING LINTING CONTEXT MENU ====================');
+    
+    if (!window.mithrilIDE?.ideAIManager?.editor) {
+      console.log('🔍 No editor available for testing');
+      return;
+    }
+    
+    const editor = window.mithrilIDE.ideAIManager.editor;
+    const lintingManager = window.mithrilIDE.ideAIManager.lintingManager;
+    
+    if (!lintingManager) {
+      console.log('🔍 No linting manager available');
+      return;
+    }
+    
+    // Check current errors
+    const content = editor.getValue();
+    const mode = editor.getOption('mode');
+    
+    console.log('🔍 Current file mode:', mode);
+    console.log('🔍 File content length:', content.length);
+    
+    // Test HTML linting if it's an HTML file
+    if (mode === 'htmlmixed') {
+      const htmlErrors = lintingManager.lintHTML(content);
+      console.log('🔍 HTML errors found:', htmlErrors.length);
+      
+      if (htmlErrors.length > 0) {
+        console.log('🔍 First error:', htmlErrors[0]);
+        console.log('🔍 ✅ Context menu should work! Right-click on line', htmlErrors[0].from.line + 1);
+      }
+    }
+    
+    console.log('🔍 Instructions: Right-click on any red error marker to see "Send to AI Chat" option');
+    console.log('🔍 ==================== END CONTEXT MENU TEST ====================');
+  };
   
   // Initialize auto-replace toggle button state
   setTimeout(() => {

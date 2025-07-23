@@ -1644,4 +1644,192 @@ body {
 /* Notification Styles */
 .notification {
   font-family: 'Segoe UI', sans-serif;
+}
+
+/* ===== LINTING STYLES ===== */
+.CodeMirror-lint-markers {
+  width: 16px;
+  background: rgba(0, 0, 0, 0.1);
+  border-right: 1px solid var(--border-color);
+}
+
+.CodeMirror-lint-tooltip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  max-width: 300px;
+  z-index: 1000;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.CodeMirror-lint-mark-error {
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAAXNSR0IArs4c6QAAAAZiS0dEAP8A/wD/oL2nkwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9sJDw4cOCW1/KIAAAAZdEVYdENvbW1lbnQAQ3JlYXRlZCB3aXRoIEdJTVBXgQ4XAAAAHElEQVQI12NggIL/DAz/GdA5/xkY/qPKMDAwAADLZwf5rvm+LQAAAABJRU5ErkJggg==");
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  text-decoration: underline;
+  text-decoration-color: var(--error-color);
+  text-decoration-style: wavy;
+}
+
+.CodeMirror-lint-mark-warning {
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAAXNSR0IArs4c6QAAAAZiS0dEAP8A/wD/oL2nkwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9sJFhQXEbhTg7YAAAAZdEVYdENvbW1lbnQAQ3JlYXRlZCB3aXRoIEdJTVBXgQ4XAAAAMklEQVQI12NkgIMvJ3QXMjAwdDN+OaEbysDA4MPAwNDNwMCwiOHLCd1zX07o6kBVGQEAKBANtobskNMAAAAASUVORK5CYII=");
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  text-decoration: underline;
+  text-decoration-color: var(--warning-color);
+  text-decoration-style: wavy;
+}
+
+.CodeMirror-lint-marker-error {
+  background: #ff4444;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+  margin: 2px;
+}
+
+.CodeMirror-lint-marker-error::after {
+  content: "✗";
+  color: white;
+  font-size: 8px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+}
+
+.CodeMirror-lint-marker-warning {
+  background: #ffaa00;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+  margin: 2px;
+}
+
+.CodeMirror-lint-marker-warning::after {
+  content: "!";
+  color: white;
+  font-size: 8px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+}
+
+.CodeMirror-lint-marker-multiple {
+  background: #9900ff;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+  margin: 2px;
+}
+
+.CodeMirror-lint-marker-multiple::after {
+  content: "⋯";
+  color: white;
+  font-size: 8px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+}
+
+.CodeMirror-lint-message-error {
+  color: var(--error-color);
+  font-weight: 500;
+}
+
+.CodeMirror-lint-message-warning {
+  color: var(--warning-color);
+  font-weight: 500;
+}
+
+/* Lint tooltip specific styling */
+.CodeMirror-lint-tooltip .CodeMirror-lint-message-error {
+  border-left: 3px solid var(--error-color);
+  padding-left: 8px;
+}
+
+.CodeMirror-lint-tooltip .CodeMirror-lint-message-warning {
+  border-left: 3px solid var(--warning-color);
+  padding-left: 8px;
+}
+
+/* Linting Context Menu Styling */
+.linting-context-menu {
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+  min-width: 180px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  animation: contextMenuAppear 0.15s ease-out;
+}
+
+@keyframes contextMenuAppear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.linting-menu-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  user-select: none;
+  font-weight: 500;
+}
+
+.linting-menu-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-blue);
+}
+
+.linting-menu-item:active {
+  background: rgba(0, 122, 204, 0.1);
+  transform: translateY(1px);
+}
+
+.linting-menu-item .menu-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.linting-menu-item .menu-text {
+  flex: 1;
 } 

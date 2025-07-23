@@ -17,6 +17,7 @@ class IDEAIManager {
     this.isSelectionActive = false;
     this.lastSelectionLength = 0;
     this.isActivelySelecting = false;
+    this.mouseDownTime = null;
     
     // Real-time editing
     this.isAIEditing = false;
@@ -41,24 +42,31 @@ class IDEAIManager {
     this.chatCodeChunks = [];
     this.chunkIdCounter = 0;
     
+    // Linting Manager
+    this.lintingManager = null;
+    
     this.init();
   }
 
   async init() {
     try {
-      console.log('🔄 Waiting for CodeMirror...');
-      await this.waitForCodeMirror();
-      console.log('✅ CodeMirror loaded');
-      
-      console.log('🔧 Setting up editor container...');
-      this.setupEditorContainer();
-      console.log('✅ Editor container ready');
-      
-      console.log('🎯 Setting up selection tracking...');
-      this.setupSelectionTracking();
-      console.log('✅ Selection tracking ready');
-      
-      console.log('✅ IDE AI Manager initialized');
+          console.log('🔄 Waiting for CodeMirror...');
+    await this.waitForCodeMirror();
+    console.log('✅ CodeMirror loaded');
+    
+    console.log('🔧 Setting up editor container...');
+    this.setupEditorContainer();
+    console.log('✅ Editor container ready');
+    
+    console.log('🎯 Setting up selection tracking...');
+    this.setupSelectionTracking();
+    console.log('✅ Selection tracking ready');
+    
+    console.log('🔍 Initializing linting manager...');
+    this.initializeLinting();
+    console.log('✅ Linting manager ready');
+    
+    console.log('✅ IDE AI Manager initialized');
     } catch (error) {
       console.error('❌ Failed to initialize IDE AI Manager:', error);
       console.error('Error details:', error.stack);
@@ -241,6 +249,9 @@ class IDEAIManager {
     this.editor.setValue(fileInfo.content || '');
     console.log('📝 Content set in editor');
     
+    // Enable linting for this editor
+    this.enableLintingForEditor(fileInfo.mode);
+    
     // Force CodeMirror to take full size
     this.editor.setSize('100%', '100%');
     console.log('✅ CodeMirror editor created successfully');
@@ -271,26 +282,8 @@ class IDEAIManager {
     // Set up undo/redo system
     this.setupUndoRedo();
 
-    // Selection tracking
-    this.editor.on('cursorActivity', () => {
-      this.handleSelectionChange();
-    });
-
-    // Track mouse events to detect active selection
-    this.editor.on('mousedown', () => {
-      this.isActivelySelecting = true;
-    });
-    
-    this.editor.on('mouseup', () => {
-      this.isActivelySelecting = false;
-      // Trigger a final selection check after mouse up with shorter delay
-      if (this.highlightTimeout) {
-        clearTimeout(this.highlightTimeout);
-      }
-      this.highlightTimeout = setTimeout(() => {
-        this.updateSelectionState();
-      }, 100);
-    });
+    // Set up enhanced selection tracking
+    this.setupEditorSelectionEvents();
 
     // Right-click context menu for selected code
     this.editor.on('contextmenu', (cm, event) => {
@@ -320,53 +313,228 @@ class IDEAIManager {
 
   // Selection Tracking
   setupSelectionTracking() {
-    // Monitor for text selection
+    // Real-time selection tracking with CodeMirror events
+    if (this.editor) {
+      this.setupEditorSelectionEvents();
+    }
+    
+    // Backup polling for edge cases (reduced frequency)
     setInterval(() => {
       if (this.editor && !this.isAIEditing) {
         this.updateSelectionState();
       }
-    }, 500);
+    }, 1000);
   }
 
-  handleSelectionChange() {
-    if (this.highlightTimeout) {
-      clearTimeout(this.highlightTimeout);
+  // Initialize linting capabilities
+  initializeLinting() {
+    try {
+      // Check if linting manager is available
+      if (typeof IDELintingManager !== 'undefined') {
+        this.lintingManager = new IDELintingManager();
+        console.log('🔍 Linting manager initialized successfully');
+      } else {
+        console.warn('🔍 IDELintingManager not available - linting disabled');
+      }
+    } catch (error) {
+      console.error('🔍 Failed to initialize linting manager:', error);
+    }
+  }
+
+  // Test linting functionality
+  testLinting() {
+    if (this.lintingManager) {
+      return this.lintingManager.testLinting();
+    } else {
+      console.log('🔍 Linting manager not available');
+      return null;
+    }
+  }
+
+  // Enable linting for the current editor
+  enableLintingForEditor(mode) {
+    if (!this.editor || !this.lintingManager) {
+      console.log('🔍 Linting not available (no editor or linting manager)');
+      return;
+    }
+
+    try {
+      console.log(`🔍 Enabling linting for mode: ${mode}`);
+      this.lintingManager.enableLinting(this.editor, mode);
+      console.log('🔍 Linting enabled successfully');
+    } catch (error) {
+      console.error('🔍 Failed to enable linting:', error);
+    }
+  }
+
+  // Disable linting for the current editor
+  disableLintingForEditor() {
+    if (!this.editor || !this.lintingManager) {
+      return;
+    }
+
+    try {
+      this.lintingManager.disableLinting(this.editor);
+      console.log('🔍 Linting disabled');
+    } catch (error) {
+      console.error('🔍 Failed to disable linting:', error);
+    }
+  }
+
+  // Toggle linting on/off
+  toggleLinting() {
+    if (!this.lintingManager) {
+      console.log('🔍 Linting manager not available');
+      return false;
+    }
+
+    const isEnabled = this.lintingManager.toggleLinting();
+    
+    if (this.editor) {
+      if (isEnabled) {
+        const currentFile = this.openFiles.get(this.currentFile);
+        if (currentFile) {
+          this.enableLintingForEditor(currentFile.mode);
+        }
+      } else {
+        this.disableLintingForEditor();
+      }
     }
     
-    // Track selection changes to detect if user is still actively selecting
-    const currentSelection = this.editor ? this.editor.getSelection() : '';
-    const currentSelectionLength = currentSelection.trim().length;
+    return isEnabled;
+  }
+
+  setupEditorSelectionEvents() {
+    if (!this.editor) return;
     
-    // If we have a previous selection, check if it's still growing
+    // Listen to CodeMirror selection events
+    this.editor.on('beforeSelectionChange', (editor, selection) => {
+      // Track that user is actively making a selection
+      this.isActivelySelecting = true;
+      this.clearSelectionTimeout();
+      
+      console.log('🎯 Selection starting...');
+    });
+    
+    this.editor.on('cursorActivity', (editor) => {
+      // This fires on any cursor/selection change
+      this.handleRealtimeSelectionChange();
+    });
+    
+    // Listen to mouse events for better selection detection
+    const editorElement = this.editor.getWrapperElement();
+    
+    editorElement.addEventListener('mousedown', () => {
+      this.isActivelySelecting = true;
+      this.mouseDownTime = Date.now();
+      this.clearSelectionTimeout();
+      console.log('🎯 Mouse down - selection may be starting');
+    });
+    
+    editorElement.addEventListener('mousemove', (e) => {
+      if (this.isActivelySelecting && e.buttons === 1) {
+        // User is dragging while holding mouse button
+        this.clearSelectionTimeout();
+        console.log('🎯 Mouse dragging - extending selection');
+      }
+    });
+    
+    editorElement.addEventListener('mouseup', () => {
+      if (this.isActivelySelecting) {
+        this.isActivelySelecting = false;
+        
+        // Wait a bit for selection to stabilize, then process
+        this.setSelectionTimeout(300, 'mouse up - finalizing selection');
+        console.log('🎯 Mouse up - selection may be complete');
+      }
+    });
+    
+    // Handle keyboard selection (Shift+Arrow keys, Ctrl+A, etc.)
+    editorElement.addEventListener('keyup', (e) => {
+      if (e.shiftKey || e.key === 'a' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        this.setSelectionTimeout(200, 'keyboard selection');
+      }
+    });
+  }
+
+  clearSelectionTimeout() {
+    if (this.highlightTimeout) {
+      clearTimeout(this.highlightTimeout);
+      this.highlightTimeout = null;
+    }
+  }
+
+  setSelectionTimeout(delay, reason) {
+    this.clearSelectionTimeout();
+    
+    console.log(`⏱️ Setting selection timeout: ${delay}ms (${reason})`);
+    
+    this.highlightTimeout = setTimeout(() => {
+      console.log(`✅ Processing selection after delay: ${reason}`);
+      this.finalizeSelection();
+    }, delay);
+  }
+
+  handleRealtimeSelectionChange() {
+    if (!this.editor || this.isAIEditing) return;
+    
+    const selection = this.editor.getSelection();
+    const currentSelectionLength = selection.trim().length;
+    
+    // Track selection growth
     const isGrowingSelection = this.lastSelectionLength && 
                               currentSelectionLength > this.lastSelectionLength &&
                               currentSelectionLength > 0;
     
+    const isShrinkingSelection = this.lastSelectionLength && 
+                                currentSelectionLength < this.lastSelectionLength &&
+                                currentSelectionLength > 0;
+    
     this.lastSelectionLength = currentSelectionLength;
     
-    // Determine delay based on selection state
-    let delay;
-    let reason;
-    if (this.isActivelySelecting) {
-      // User is actively dragging - use longest delay
-      delay = 1000;
-      reason = 'actively selecting';
-    } else if (isGrowingSelection) {
-      // Selection is growing but no active mouse - medium delay
-      delay = 600;
-      reason = 'growing selection';
-    } else {
-      // Selection appears stable - quick response
-      delay = 200;
-      reason = 'stable selection';
+    // Clear previous timeout
+    this.clearSelectionTimeout();
+    
+    if (currentSelectionLength === 0) {
+      // No selection - clear immediately
+      this.finalizeSelection();
+      return;
     }
     
-    console.log(`🎯 Selection change: ${currentSelectionLength} chars, delay: ${delay}ms (${reason})`);
+    // Determine appropriate delay based on selection state
+    let delay;
+    let reason;
     
-    this.highlightTimeout = setTimeout(() => {
-      this.updateSelectionState();
-    }, delay);
+    if (this.isActivelySelecting) {
+      // User is actively selecting with mouse - wait longer
+      delay = 800;
+      reason = 'actively selecting with mouse';
+    } else if (isGrowingSelection) {
+      // Selection is growing (likely keyboard or slow mouse) - medium delay
+      delay = 500;
+      reason = 'selection growing';
+    } else if (isShrinkingSelection) {
+      // Selection is shrinking - user might be fine-tuning
+      delay = 400;
+      reason = 'selection shrinking';
+    } else {
+      // Selection appears stable - quicker response
+      delay = 250;
+      reason = 'selection stable';
+    }
+    
+    console.log(`🎯 Selection change: ${currentSelectionLength} chars - ${reason} (${delay}ms delay)`);
+    
+    this.setSelectionTimeout(delay, reason);
   }
+
+  finalizeSelection() {
+    this.updateSelectionState();
+    this.isActivelySelecting = false;
+    this.mouseDownTime = null;
+  }
+
+
 
   updateSelectionState() {
     if (!this.editor) return;
@@ -440,6 +608,20 @@ class IDEAIManager {
     }
   }
 
+  // Simple cleaner to remove triple backticks that comment out code
+  cleanCodeArtifacts(content) {
+    if (!content) return content;
+    
+    // Remove triple backticks that are used for markdown code blocks
+    // but end up commenting out actual code
+    return content
+      .replace(/^```[a-zA-Z]*\s*\n?/gm, '') // Remove opening triple backticks with optional language
+      .replace(/^```\s*\n?/gm, '')          // Remove closing triple backticks
+      .replace(/\n```\s*$/gm, '')           // Remove trailing triple backticks
+      .replace(/```\s*\n/g, '\n')           // Remove inline triple backticks with newlines
+      .replace(/```/g, '');                 // Remove any remaining triple backticks
+  }
+
   // Real-time AI Editing
   async replaceFileContent(newContent) {
     if (!this.editor || !this.currentFile) return;
@@ -447,6 +629,10 @@ class IDEAIManager {
     this.isAIEditing = true;
     
     try {
+      // Clean any triple backticks that would comment out code
+      const cleanedContent = this.cleanCodeArtifacts(newContent);
+      console.log('🧹 Cleaned content artifacts (backticks removed)');
+      
       // Create edit marker for the entire content
       const lastLine = this.editor.lastLine();
       const lastChar = this.editor.getLine(lastLine).length;
@@ -460,7 +646,7 @@ class IDEAIManager {
       this.editMarkers.push(marker);
       
       // Replace content with streaming effect
-      await this.streamReplace(newContent);
+      await this.streamReplace(cleanedContent);
       
       // Update file info
       const fileInfo = this.openFiles.get(this.currentFile);
@@ -523,6 +709,10 @@ class IDEAIManager {
     this.isAIEditing = true;
     
     try {
+      // Clean any triple backticks that would comment out code
+      const cleanedContent = this.cleanCodeArtifacts(newContent);
+      console.log('🧹 Cleaned line range content artifacts (backticks removed)');
+      
       // Mark the range being edited
       const marker = this.editor.markText(
         { line: startLine, ch: 0 },
@@ -534,7 +724,7 @@ class IDEAIManager {
       
       // Replace the range
       this.editor.replaceRange(
-        newContent,
+        cleanedContent,
         { line: startLine, ch: 0 },
         { line: endLine, ch: this.editor.getLine(endLine).length }
       );
