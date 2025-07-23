@@ -1,0 +1,86 @@
+{
+  "name": "ai-file-assistant",
+  "version": "1.0.0",
+  "description": "AI File Assistant - Local AI-powered file analysis and manipulation using Ollama",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "pack-simple": "electron-packager . \"Mithril AI Assistant\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=logoM.ico",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "electron",
+    "ai",
+    "file-assistant",
+    "ollama",
+    "local",
+    "coding-assistant"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "chokidar": "^3.6.0",
+    "highlight.js": "^11.9.0",
+    "marked": "^12.0.2",
+    "mime-types": "^2.1.35",
+    "monaco-editor": "^0.52.2",
+    "node-stream-zip": "^1.15.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.mithril.ai-file-assistant",
+    "productName": "Mithril AI File Assistant",
+    "copyright": "Copyright © 2024 Mithril Team",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "logoM.ico",
+      "logoM.png"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "logoM.ico",
+      "artifactName": "${productName}-${version}-portable.${ext}",
+      "publisherName": "Mithril Team"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "logoM.ico",
+      "uninstallerIcon": "logoM.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mithril AI Assistant"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "logoM.png",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "logoM.png",
+      "category": "Development"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  }
+}
