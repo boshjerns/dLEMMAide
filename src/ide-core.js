@@ -2555,16 +2555,23 @@ User request: ${userMessage}`;
     }
 
     if (entry.type === 'save' && entry.data.oldContent && this.ideAIManager.getCurrentFileName()) {
-      const confirmed = confirm(`Revert "${entry.data.fileName}" to previous version?\n\nThis will replace current content with:\n${entry.data.oldContent.substring(0, 200)}${entry.data.oldContent.length > 200 ? '...' : ''}`);
-      
-      if (confirmed && this.ideAIManager.editor) {
-        this.ideAIManager.editor.setValue(entry.data.oldContent);
-        this.ideAIManager.markFileAsDirty();
-        this.addChatMessage('system', `🔄 Reverted "${entry.data.fileName}" to version from ${new Date(entry.timestamp).toLocaleString()}`);
-        document.querySelector('.history-modal')?.remove();
-      }
+      // Use custom confirm dialog instead of native confirm
+      this.ideAIManager.showCustomConfirmDialog(
+        'Revert File',
+        `Revert "${entry.data.fileName}" to previous version?\n\nThis will replace current content with:\n${entry.data.oldContent.substring(0, 200)}${entry.data.oldContent.length > 200 ? '...' : ''}`,
+        'Revert',
+        'Cancel'
+      ).then((confirmed) => {
+        if (confirmed && this.ideAIManager.editor) {
+          this.ideAIManager.editor.setValue(entry.data.oldContent);
+          this.ideAIManager.markFileAsDirty();
+          this.addChatMessage('system', `🔄 Reverted "${entry.data.fileName}" to version from ${new Date(entry.timestamp).toLocaleString()}`);
+          document.querySelector('.history-modal')?.remove();
+        }
+      });
     } else {
-      alert(`Selected entry: ${entry.type} at ${new Date(entry.timestamp).toLocaleString()}\n\nRevert functionality is currently available for file saves only.`);
+      // Replace alert with custom notification
+      this.addChatMessage('system', `Selected entry: ${entry.type} at ${new Date(entry.timestamp).toLocaleString()}\n\nRevert functionality is currently available for file saves only.`);
     }
   }
 

@@ -185,10 +185,12 @@ class IDEAIManager {
   async createOrUpdateEditor(fileInfo) {
     console.log('🔧 Creating/updating editor for:', fileInfo.name);
     
-    // Clear existing editor
+    // Clear existing editor with proper cleanup
     if (this.editor) {
       this.clearEditMarkers();
+      this.cleanupEditorEventListeners();
       this.editor.toTextArea();
+      this.editor = null;
     }
 
     // Ensure editor container is visible and ready
@@ -841,9 +843,32 @@ class IDEAIManager {
     console.log('🗑️ Closing file:', filePath);
     const fileInfo = this.openFiles.get(filePath);
     if (fileInfo && fileInfo.isDirty) {
-      if (!confirm(`${fileInfo.name} has unsaved changes. Close anyway?`)) {
-        return;
-      }
+      // Use custom confirm dialog instead of native confirm
+      this.showCustomConfirmDialog(
+        'Unsaved Changes',
+        `${fileInfo.name} has unsaved changes. Close anyway?`,
+        'Close without saving',
+        'Cancel'
+      ).then((confirmed) => {
+        if (confirmed) {
+          this.performFileClose(filePath);
+        }
+      });
+      return;
+    }
+    
+    // File is not dirty, close immediately
+    this.performFileClose(filePath);
+  }
+
+  // Separate method to perform the actual file closing
+  performFileClose(filePath) {
+    console.log('🗑️ Performing file close for:', filePath);
+    const fileInfo = this.openFiles.get(filePath);
+    
+    // Clean up editor event listeners if this is the current file
+    if (this.currentFile === filePath && this.editor) {
+      this.cleanupEditorEventListeners();
     }
     
     // Add to history before closing
@@ -886,6 +911,12 @@ class IDEAIManager {
         console.log('👋 No more files, showing welcome screen');
         this.showWelcomeScreen();
         this.currentFile = null;
+        // Clear editor if no files remain
+        if (this.editor) {
+          this.cleanupEditorEventListeners();
+          this.editor.toTextArea();
+          this.editor = null;
+        }
       }
     }
   }
@@ -1928,5 +1959,144 @@ class IDEAIManager {
         }
       }
     }
+  }
+
+  // Custom confirm dialog that doesn't disrupt DOM state
+  async showCustomConfirmDialog(title, message, confirmText = 'OK', cancelText = 'Cancel') {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'custom-confirm-modal';
+      
+      modal.innerHTML = `
+        <div class="custom-confirm-content">
+          <div class="custom-confirm-header">
+            <h3>${title}</h3>
+          </div>
+          <div class="custom-confirm-body">
+            <p>${message}</p>
+          </div>
+          <div class="custom-confirm-actions">
+            <button class="confirm-btn confirm-cancel">${cancelText}</button>
+            <button class="confirm-btn confirm-ok">${confirmText}</button>
+          </div>
+        </div>
+      `;
+
+      // Style the modal to match existing modals
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7); display: flex; justify-content: center;
+        align-items: center; z-index: 10002; font-family: 'Segoe UI', sans-serif;
+      `;
+
+      const content = modal.querySelector('.custom-confirm-content');
+      content.style.cssText = `
+        background: var(--bg-secondary); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 20px; min-width: 400px; color: var(--text-primary);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      `;
+
+      const header = modal.querySelector('.custom-confirm-header h3');
+      header.style.cssText = `
+        margin: 0 0 15px 0; color: var(--text-primary); font-size: 16px;
+      `;
+
+      const body = modal.querySelector('.custom-confirm-body p');
+      body.style.cssText = `
+        margin: 0 0 20px 0; color: var(--text-secondary); line-height: 1.5;
+      `;
+
+      const actions = modal.querySelector('.custom-confirm-actions');
+      actions.style.cssText = `
+        display: flex; gap: 10px; justify-content: flex-end;
+      `;
+
+      // Style buttons
+      const buttons = modal.querySelectorAll('.confirm-btn');
+      buttons.forEach(btn => {
+        btn.style.cssText = `
+          padding: 8px 16px; border: none; border-radius: 4px; font-size: 14px;
+          cursor: pointer; font-weight: 500; transition: all 0.2s ease;
+        `;
+        
+        if (btn.classList.contains('confirm-cancel')) {
+          btn.style.cssText += `
+            background: var(--bg-tertiary); color: var(--text-primary);
+            border: 1px solid var(--border-color);
+          `;
+        } else if (btn.classList.contains('confirm-ok')) {
+          btn.style.cssText += `
+            background: var(--error-color); color: white;
+          `;
+        }
+      });
+
+      document.body.appendChild(modal);
+
+      const cleanup = () => {
+        if (document.body.contains(modal)) {
+          document.body.removeChild(modal);
+        }
+      };
+
+      // Handle button clicks
+      modal.querySelector('.confirm-ok').addEventListener('click', () => {
+        cleanup();
+        resolve(true);
+      });
+
+      modal.querySelector('.confirm-cancel').addEventListener('click', () => {
+        cleanup();
+        resolve(false);
+      });
+
+      // Handle ESC key
+      const handleKeyPress = (e) => {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', handleKeyPress);
+          cleanup();
+          resolve(false);
+        }
+      };
+      document.addEventListener('keydown', handleKeyPress);
+
+      // Close on background click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          cleanup();
+          resolve(false);
+        }
+      });
+
+      // Focus the cancel button by default
+      setTimeout(() => {
+        modal.querySelector('.confirm-cancel').focus();
+      }, 100);
+    });
+  }
+
+  // Proper cleanup of CodeMirror event listeners
+  cleanupEditorEventListeners() {
+    if (!this.editor) return;
+    
+    console.log('🧹 Cleaning up editor event listeners');
+    
+    // Remove all event listeners
+    this.editor.off('change');
+    this.editor.off('beforeSelectionChange');
+    this.editor.off('cursorActivity');
+    this.editor.off('contextmenu');
+    
+    // Remove mouse event listeners from wrapper element
+    const editorElement = this.editor.getWrapperElement();
+    if (editorElement) {
+      // Clone and replace to remove all event listeners
+      const newElement = editorElement.cloneNode(true);
+      if (editorElement.parentNode) {
+        editorElement.parentNode.replaceChild(newElement, editorElement);
+      }
+    }
+    
+    console.log('✅ Editor event listeners cleaned up');
   }
 } 

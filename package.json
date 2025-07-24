@@ -26,13 +26,20 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
     "axios": "^1.7.2",
     "chokidar": "^3.6.0",
+    "csslint": "^1.0.5",
+    "eslint": "^9.31.0",
     "highlight.js": "^11.9.0",
+    "htmlhint": "^1.6.3",
+    "jshint": "^2.13.6",
     "marked": "^12.0.2",
     "mime-types": "^2.1.35",
     "monaco-editor": "^0.52.2",
-    "node-stream-zip": "^1.15.0"
+    "node-stream-zip": "^1.15.0",
+    "typescript": "^5.8.3"
   },
   "devDependencies": {
     "electron": "^31.0.0",
