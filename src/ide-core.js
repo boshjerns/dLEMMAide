@@ -475,23 +475,27 @@ User message: "${userMessage}"
 
 CRITICAL RULES FOR INTENT DETECTION:
 
-1. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
+1. **FILE READING/ANALYSIS**: If user asks about file content with phrases like "what is in this file", "show me this file", "what does this file contain", "tell me about this file":
+   - Use "read_file" to read and display the current file content
+   - This applies when a file is open and user wants to see/understand its contents
+
+2. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
    - Use "refactor_code" for: "refactor this", "improve these", "clean this up"
    - Use "fix_issues" for: "fix this", "fix these errors", "debug this"
    - Use "optimize_code" for: "optimize this", "make this faster", "improve performance"
    - Use "edit_file" for: "change this", "make this red", "update these colors", "modify this"
 
-2. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
+3. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
    - Use "edit_file" for file-wide changes like "make this file pink theme", "update the colors"
 
-3. **SPECIFIC OVERRIDES**:
+4. **SPECIFIC OVERRIDES**:
    - Color/theme changes to selected text → "edit_file" with target "selection"  
    - Code improvements to selected text → "refactor_code"
    - Bug fixes to selected text → "fix_issues"
    - Performance improvements → "optimize_code"
    - Questions about code → "chat_response"
 
-4. **FALLBACK**: If unclear, but file is open → "edit_file"
+5. **FALLBACK**: If unclear, but file is open → "edit_file"
 
 Respond with JSON only:
 {
@@ -502,6 +506,7 @@ Respond with JSON only:
 }
 
 Tool selection rules:
+- File content reading/display → "read_file"
 - Code questions/explanations → "chat_response"
 - File editing/modification (including colors, themes, styling) → "edit_file" 
 - New file creation → "create_file"
@@ -3170,25 +3175,67 @@ Fixed file content:`;
     console.log('📖 User message:', message);
 
     try {
+      let fileContent = null;
+      let fileName = pathUtils.basename(filePath);
+      
       // First try to get content from the editor if the file is currently open
       if (this.ideAIManager && this.ideAIManager.getCurrentFilePath() === filePath) {
-        const editorContent = this.ideAIManager.getCurrentFileContent();
-        if (editorContent !== null) {
+        fileContent = this.ideAIManager.getCurrentFileContent();
+        if (fileContent !== null) {
           console.log('📖 Reading from editor content');
-          return `File content (${editorContent.length} characters):\n\n${editorContent.substring(0, 1000)}${editorContent.length > 1000 ? '...' : ''}`;
         }
       }
       
-      // Fallback to reading from disk
-      console.log('📖 Reading from disk');
-      const result = await ipcRenderer.invoke('fs:readFile', filePath);
-      if (result.success) {
-        return `File content (${result.content.length} characters):\n\n${result.content.substring(0, 1000)}${result.content.length > 1000 ? '...' : ''}`;
-      } else {
-        return `Error reading file: ${result.error}`;
+      // Fallback to reading from disk if not found in editor
+      if (fileContent === null) {
+        console.log('📖 Reading from disk');
+        const result = await ipcRenderer.invoke('fs:readFile', filePath);
+        if (result.success) {
+          fileContent = result.content;
+        } else {
+          return `❌ Error reading file "${fileName}": ${result.error}`;
+        }
       }
+
+      if (!fileContent) {
+        return `📄 The file "${fileName}" appears to be empty.`;
+      }
+
+      // Analyze the file content and provide a comprehensive overview
+      const fileExtension = pathUtils.extname(filePath).toLowerCase();
+      const lineCount = fileContent.split('\n').length;
+      const charCount = fileContent.length;
+      
+      // Generate AI analysis of the file content
+      const systemPrompt = `You are an AI assistant analyzing a file for a user. Provide a comprehensive overview of the file content.
+
+File name: ${fileName}
+File type: ${fileExtension}
+File size: ${charCount} characters, ${lineCount} lines
+
+File content:
+${fileContent}
+
+User asked: "${message}"
+
+Provide a detailed analysis including:
+1. **File Overview**: What this file is and its purpose
+2. **Main Components**: Key functions, classes, or sections
+3. **Language/Technology**: Programming language, framework, or file type
+4. **Structure**: How the code/content is organized
+5. **Key Features**: Important functionality or notable aspects
+6. **Dependencies**: Any imports, libraries, or external dependencies
+
+Be thorough but concise. Use markdown formatting for better readability.`;
+
+      console.log('🤖 Generating AI analysis of file content...');
+      const analysis = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+      
+      return analysis;
+      
     } catch (error) {
-      return `Error reading file: ${error.message}`;
+      console.error('❌ Error in readFile:', error);
+      return `❌ Error analyzing file: ${error.message}`;
     }
   }
 
@@ -3197,14 +3244,50 @@ Fixed file content:`;
     console.log('💬 Context:', context);
     console.log('💬 User message:', message);
 
-    const systemPrompt = `You are an AI coding assistant integrated into an IDE. Help the user with their programming questions and tasks.
+    // Check if user is asking about current file content
+    const isFileContentQuery = /\b(what|show|tell|explain|analyze|describe).*(this file|current file|file|code)\b/i.test(message) ||
+                              /\b(file|content|code).*(contain|inside|about)\b/i.test(message);
+
+    let systemPrompt = `You are an AI coding assistant integrated into an IDE. Help the user with their programming questions and tasks.
 
 Context:
-${context}
+- Current file: ${context.currentFile || 'None'}
+- Selected text: ${context.selectedText || 'None'}
+- Working folder: ${context.workingFolder || 'None'}
+- File is open: ${context.isFileOpen ? 'Yes' : 'No'}`;
+
+    // If user is asking about file content and a file is open, include the actual content
+    if (isFileContentQuery && context.isFileOpen && this.ideAIManager) {
+      const fileContent = this.ideAIManager.getCurrentFileContent();
+      if (fileContent) {
+        const fileName = this.ideAIManager.getCurrentFileName();
+        const fileExtension = pathUtils.extname(context.currentFilePath || '').toLowerCase();
+        const lineCount = fileContent.split('\n').length;
+        
+        systemPrompt += `
+
+**CURRENT FILE CONTENT:**
+File: ${fileName} (${fileExtension} file, ${lineCount} lines, ${fileContent.length} characters)
+Content:
+\`\`\`
+${fileContent}
+\`\`\`
+
+The user is asking about this file content. Provide a comprehensive analysis including:
+- What the file does and its purpose
+- Key components, functions, or classes
+- Programming language and framework used
+- Important features or functionality
+- Code structure and organization
+- Any notable patterns or interesting aspects`;
+      }
+    }
+
+    systemPrompt += `
 
 User message: "${message}"
 
-Provide helpful, accurate, and detailed assistance.`;
+Provide helpful, accurate, and detailed assistance. If discussing code, use proper markdown formatting.`;
 
     return await this.generateWithModel(this.selectedModel, message, systemPrompt);
   }
