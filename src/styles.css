@@ -1,5 +1,5 @@
 /* Mithril AI IDE - Blue-Magenta-Yellow Gradient Theme */
-
+image.png
 :root {
   /* Glass Morphism Base Colors */
   --bg-primary: #0d1117;
@@ -1576,7 +1576,11 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(ellipse at center, rgba(14, 165, 233, 0.08) 0%, rgba(14, 165, 233, 0.02) 40%, transparent 70%);
+  background: radial-gradient(ellipse at center, 
+    rgba(0, 212, 255, 0.08) 0%, 
+    rgba(102, 51, 255, 0.04) 40%, 
+    rgba(255, 51, 204, 0.02) 70%, 
+    transparent 100%);
   z-index: 1;
 }
 
@@ -1588,35 +1592,32 @@ body {
   animation: brandFadeIn 1.5s ease-out;
 }
 
-.brand-text {
-  font-size: 8vw;
+.ascii-art {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
   font-weight: 900;
-  letter-spacing: 0.05em;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, 
-    #e2e8f0 0%, 
-    #cbd5e1 25%, 
-    #94a3b8 50%, 
-    #64748b 75%, 
-    #475569 100%);
-  background-size: 200% 200%;
+  line-height: 1;
+  white-space: pre;
+  text-align: center;
+  font-size: 2vw;
+  background: linear-gradient(90deg, 
+    #00d4ff 0%,     /* Cyan */
+    #0099ff 20%,    /* Light Blue */
+    #3366ff 40%,    /* Blue */
+    #6633ff 60%,    /* Purple */
+    #9933ff 80%,    /* Magenta */
+    #ff33cc 100%    /* Pink */
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: shimmer 3s ease-in-out infinite;
-  text-shadow: 0 0 40px rgba(14, 165, 233, 0.3);
-  font-family: 'Segoe UI', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-size: 200% 100%;
+  animation: retroGlow 4s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.3));
 }
 
-.brand-subtitle {
-  font-size: 1.2rem;
-  font-weight: 400;
-  color: var(--text-muted);
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  opacity: 0.7;
-  margin-top: 1rem;
-  font-family: 'Segoe UI', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
+.ascii-line {
+  display: block;
+  height: 1em;
 }
 
 @keyframes brandFadeIn {
@@ -1630,29 +1631,33 @@ body {
   }
 }
 
-@keyframes shimmer {
+@keyframes retroGlow {
   0%, 100% {
     background-position: 0% 50%;
+    filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.3));
   }
   50% {
     background-position: 100% 50%;
+    filter: drop-shadow(0 0 30px rgba(255, 51, 204, 0.4));
   }
 }
 
-/* Responsive brand text */
+/* Responsive ASCII art */
 @media (max-width: 768px) {
-  .brand-text {
-    font-size: 12vw;
+  .ascii-art {
+    font-size: 3vw;
   }
-  
-  .brand-subtitle {
-    font-size: 1rem;
+}
+
+@media (max-width: 480px) {
+  .ascii-art {
+    font-size: 4vw;
   }
 }
 
 @media (min-width: 1400px) {
-  .brand-text {
-    font-size: 6rem;
+  .ascii-art {
+    font-size: 1.5rem;
   }
 }
 
