@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mithril AI IDE - Setup</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Setup Window - Using Main App's Design System */
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      .title-bar {
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        height: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 10px;
+        -webkit-app-region: drag;
+        user-select: none;
+        flex-shrink: 0;
+      }
+
+      .title-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .app-logo {
+        height: 16px;
+        width: auto;
+      }
+
+      .app-title {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      .title-bar-right {
+        display: flex;
+        gap: 2px;
+        -webkit-app-region: no-drag;
+      }
+
+      .title-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        width: 30px;
+        height: 20px;
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 2px;
+      }
+
+      .title-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .title-btn.close:hover {
+        background: var(--error-color);
+        color: white;
+      }
+      
+      .setup-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        flex: 1;
+        overflow-y: auto;
+        height: calc(100vh - 30px);
+      }
+      
+      .setup-header {
+        text-align: center;
+        margin-bottom: 40px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      
+      .setup-header h1 {
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+      }
+      
+      .setup-step {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+      }
+      
+      .setup-step.completed {
+        background: var(--bg-tertiary);
+        border-color: var(--success-color);
+        box-shadow: 0 0 0 1px var(--success-color);
+      }
+      
+      .setup-step.error {
+        background: var(--bg-tertiary);
+        border-color: var(--error-color);
+        box-shadow: 0 0 0 1px var(--error-color);
+      }
+      
+      .step-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      .step-number {
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        font-weight: bold;
+        border: 1px solid var(--border-color);
+      }
+      
+      .step-number.completed {
+        background: var(--success-color);
+        color: white;
+        border-color: var(--success-color);
+      }
+      
+      .step-number.error {
+        background: var(--error-color);
+        color: white;
+        border-color: var(--error-color);
+      }
+      
+      .step-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary);
+      }
+      
+      .step-content {
+        margin-left: 45px;
+      }
+      
+      .step-content p {
+        color: var(--text-muted);
+        margin-bottom: 15px;
+      }
+      
+      .status-indicator {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 10px;
+      }
+      
+      .status-pending {
+        background: rgba(255, 204, 0, 0.1);
+        color: var(--accent-yellow);
+        border: 1px solid rgba(255, 204, 0, 0.3);
+      }
+      
+      .status-checking {
+        background: rgba(0, 122, 204, 0.1);
+        color: var(--accent-blue);
+        border: 1px solid rgba(0, 122, 204, 0.3);
+      }
+      
+      .status-success {
+        background: rgba(76, 175, 80, 0.1);
+        color: var(--success-color);
+        border: 1px solid rgba(76, 175, 80, 0.3);
+      }
+      
+      .status-error {
+        background: rgba(244, 71, 71, 0.1);
+        color: var(--error-color);
+        border: 1px solid rgba(244, 71, 71, 0.3);
+      }
+      
+      .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin: 5px;
+        transition: all 0.2s ease;
+        font-weight: 500;
+      }
+      
+      .btn-primary {
+        background: var(--accent-blue);
+        color: white;
+      }
+      
+      .btn-primary:hover {
+        background: #005a9e;
+      }
+      
+      .btn-success {
+        background: var(--success-color);
+        color: white;
+      }
+      
+      .btn-success:hover {
+        background: #388e3c;
+      }
+      
+      .btn-danger {
+        background: var(--error-color);
+        color: white;
+      }
+      
+      .btn-danger:hover {
+        background: #d32f2f;
+      }
+      
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      
+      .progress-bar {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        height: 8px;
+        margin: 15px 0;
+        overflow: hidden;
+      }
+      
+      .progress-fill {
+        background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+        height: 100%;
+        transition: width 0.3s ease;
+        width: 0%;
+      }
+      
+      .log-output {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 12px;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        margin-top: 10px;
+        line-height: 1.4;
+      }
+      
+      .log-output::-webkit-scrollbar {
+        width: 8px;
+      }
+      
+      .log-output::-webkit-scrollbar-track {
+        background: var(--bg-primary);
+      }
+      
+      .log-output::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+      
+      .log-output::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+      
+      .path-display {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 14px;
+        margin: 10px 0;
+        color: var(--text-highlight);
+      }
+      
+      .setup-actions {
+        text-align: center;
+        margin-top: 30px;
+        padding: 20px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border-color);
+        border-top: 2px solid var(--accent-blue);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Custom scrollbar for setup container */
+      .setup-container::-webkit-scrollbar {
+        width: 12px;
+      }
+      
+      .setup-container::-webkit-scrollbar-track {
+        background: var(--bg-primary);
+      }
+      
+      .setup-container::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 6px;
+      }
+      
+      .setup-container::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+
+      /* Model list styling */
+      #models-list h4 {
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+      }
+      
+      #models-list ul {
+        list-style: none;
+        padding: 0;
+      }
+      
+      #models-list li {
+        padding: 5px 0;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+      }
+      
+             #models-list li:last-child {
+         border-bottom: none;
+       }
+
+       /* Enhanced hover effects and animations */
+       .setup-step {
+         transition: all 0.3s ease;
+       }
+       
+       .setup-step:hover {
+         border-color: var(--accent-blue);
+         box-shadow: 0 2px 8px rgba(0, 122, 204, 0.1);
+       }
+       
+       .setup-step.completed:hover {
+         border-color: var(--success-color);
+         box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
+       }
+       
+       .setup-step.error:hover {
+         border-color: var(--error-color);
+         box-shadow: 0 2px 8px rgba(244, 71, 71, 0.2);
+       }
+
+       /* Button loading states */
+       .btn.loading {
+         pointer-events: none;
+         position: relative;
+       }
+
+       .btn.loading .spinner {
+         margin-right: 8px;
+       }
+
+       /* Tooltip-like styling for paths */
+       .path-display {
+         position: relative;
+         word-break: break-all;
+       }
+       
+       .path-display::before {
+         content: "📁 ";
+         color: var(--accent-yellow);
+       }
+
+       /* Enhanced log output styling */
+       .log-output div {
+         margin-bottom: 2px;
+         padding: 2px 0;
+       }
+       
+       .log-output div:hover {
+         background: rgba(255, 255, 255, 0.05);
+         border-radius: 2px;
+         padding: 2px 4px;
+       }
+    </style>
+  </head>
+  <body>
+    <!-- Title Bar for Setup Window -->
+    <div class="title-bar">
+      <div class="title-bar-left">
+        <img src="../logoM.png" alt="Mithril" class="app-logo" />
+        <span class="app-title">Mithril AI IDE - Setup</span>
+      </div>
+      <div class="title-bar-right">
+        <button class="title-btn" id="setup-minimize-btn">−</button>
+        <button class="title-btn close" id="setup-close-btn">×</button>
+      </div>
+    </div>
+    
+    <div class="setup-container">
+      <div class="setup-header">
+        <img src="../logoM.png" alt="Mithril" style="width: 64px; height: 64px; margin-bottom: 15px;" />
+        <h1>Mithril AI IDE Setup</h1>
+        <p>Configuring your air-gapped development environment</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="overall-progress"></div>
+        </div>
+      </div>
+
+      <!-- Step 1: Ollama Verification -->
+      <div class="setup-step" id="step-ollama">
+        <div class="step-header">
+          <div class="step-number" id="step1-number">1</div>
+          <h3 class="step-title">Verify Ollama Installation</h3>
+          <span class="status-indicator status-pending" id="ollama-status">Pending</span>
+        </div>
+        <div class="step-content">
+          <p>Checking if Ollama is installed and running on your system...</p>
+          <button class="btn btn-primary" id="check-ollama-btn">Check Ollama</button>
+          <button class="btn btn-danger" id="install-ollama-btn" style="display: none;">Install Ollama</button>
+          <div class="log-output" id="ollama-log" style="display: none;"></div>
+          <div class="path-display" id="ollama-path" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 2: Node.js Setup -->
+      <div class="setup-step" id="step-nodejs">
+        <div class="step-header">
+          <div class="step-number" id="step2-number">2</div>
+          <h3 class="step-title">Portable Node.js Setup</h3>
+          <span class="status-indicator status-pending" id="nodejs-status">Pending</span>
+        </div>
+        <div class="step-content">
+          <p>Configuring portable Node.js for air-gapped development...</p>
+          <button class="btn btn-primary" id="setup-nodejs-btn" disabled>Setup Node.js</button>
+          <div class="log-output" id="nodejs-log" style="display: none;"></div>
+          <div class="path-display" id="nodejs-path" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 3: Models Detection -->
+      <div class="setup-step" id="step-models-check">
+        <div class="step-header">
+          <div class="step-number" id="step3-number">3</div>
+          <h3 class="step-title">Check Installed Models</h3>
+          <span class="status-indicator status-pending" id="models-check-status">Pending</span>
+        </div>
+        <div class="step-content">
+          <p>Scanning for existing Ollama models in your system...</p>
+          <button class="btn btn-primary" id="check-models-btn" disabled>Check Models</button>
+          <div class="log-output" id="models-check-log" style="display: none;"></div>
+          <div id="models-list" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: Models Installation -->
+      <div class="setup-step" id="step-models-install">
+        <div class="step-header">
+          <div class="step-number" id="step4-number">4</div>
+          <h3 class="step-title">Install Bundled Models</h3>
+          <span class="status-indicator status-pending" id="models-install-status">Pending</span>
+        </div>
+        <div class="step-content">
+          <p>Installing pre-packaged AI models from the bundled collection...</p>
+          <button class="btn btn-success" id="install-models-btn" disabled>Install Models</button>
+          <div class="log-output" id="models-install-log" style="display: none;"></div>
+          <div class="path-display" id="models-target-path" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Setup Actions -->
+      <div class="setup-actions">
+        <button class="btn btn-primary" id="complete-setup-btn" disabled>Complete Setup & Launch IDE</button>
+        <button class="btn btn-danger" id="retry-setup-btn" style="display: none;">Retry Setup</button>
+      </div>
+    </div>
+
+    <script src="setup.js"></script>
+  </body>
+</html> 

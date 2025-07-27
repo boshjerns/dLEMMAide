@@ -211,4 +211,51 @@ In **5 hours**, we completely transformed the application:
 
 ---
 
+## 🔧 Air-Gapped Setup System
+
+Mithril AI IDE now includes a comprehensive setup system for air-gapped environments:
+
+### Features
+- **🔍 Ollama Verification**: Automatically detects and verifies Ollama installation
+- **⚙️ Portable Node.js Support**: Bundles Node.js for systems without internet access  
+- **📦 Model Management**: Copies pre-packaged AI models to user directory
+- **🌍 Cross-Platform**: Works on Windows, macOS, and Linux
+- **🔒 Air-Gapped Safe**: No internet connection required for setup
+
+### Usage
+1. Launch the IDE
+2. Click the **🔧** setup button in the file explorer
+3. Follow the step-by-step setup process
+4. Complete setup and launch the IDE
+
+For detailed setup instructions, see [PORTABLE-NODEJS-SETUP.md](PORTABLE-NODEJS-SETUP.md)
+
+## 📦 **Bundled Node.js System**
+
+The IDE includes a sophisticated Node.js bundling system for complete air-gapped operation:
+
+### **For Developers (Building Distribution)**
+```bash
+# Setup bundled Node.js for packaging
+npm run setup-nodejs
+
+# This downloads Node.js v18.19.0 (LTS) to nodejs-bundle/node/
+# Package includes this bundled runtime
+```
+
+### **For End Users**
+- IDE automatically detects and uses bundled Node.js
+- Falls back to system Node.js if bundled version not available  
+- No manual Node.js installation required
+- Works completely offline
+
+### **Priority System**
+1. **Bundled Node.js** - Preferred, consistent version
+2. **System Node.js** - Fallback if bundled not available
+3. **Auto-download** - Attempts to install bundled version if needed
+
+For detailed setup instructions, see [PORTABLE-NODEJS-SETUP.md](PORTABLE-NODEJS-SETUP.md)
+
+---
+
 **Built with ❤️ and ⚡ in true John Carmack style - Fast, efficient, and revolutionary.** 

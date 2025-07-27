@@ -4,8 +4,38 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Runtime data
-pids
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Bundled Node.js (too large for git)
+nodejs-bundle/
+bundled/
+
+# AI Models (too large for git)
+models/
+*.bin
+*.gguf
+*.safetensors
+
+# Electron build output
+dist/
+build/
+out/
+
+# Runtime files
+*.log
 *.pid
 *.seed
 *.pid.lock
@@ -13,15 +43,21 @@ pids
 # Coverage directory used by tools like istanbul
 coverage/
 
-# nyc test coverage
-.nyc_output
-
 # Dependency directories
-node_modules/
-jspm_packages/
+.pnp
+.pnp.js
 
 # Optional npm cache directory
 .npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
 
 # Optional REPL history
 .node_repl_history
@@ -34,42 +70,10 @@ jspm_packages/
 
 # dotenv environment variables file
 .env
+.env.test
 
-# Build outputs
-dist/
-build/
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Electron
-electron-builder.yml
-app/
-release/
-
-# Logs
-logs
-*.log
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Temporary folders
-tmp/
-temp/ 
+# Electron-builder output
+/dist_electron/ 

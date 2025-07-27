@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mithril AI IDE</title>
     
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
     <!-- CodeMirror CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/theme/material-darker.min.css">
@@ -23,24 +26,61 @@
           <img src="../logoM.png" alt="Mithril" class="app-logo" />
           <span class="app-title">Mithril AI IDE</span>
         </div>
+        <div class="title-bar-center">
+          <!-- Layout Controls -->
+          <div class="layout-controls">
+            <button class="layout-btn active" id="layout-all" title="All Panels" data-layout="all">
+              <i data-lucide="layout-grid"></i>
+            </button>
+            <button class="layout-btn" id="layout-no-sidebar" title="Hide Sidebar" data-layout="no-sidebar">
+              <i data-lucide="panel-bottom-close"></i>
+            </button>
+            <button class="layout-btn" id="layout-no-chat" title="Hide Chat" data-layout="no-chat">
+              <i data-lucide="panel-left-close"></i>
+            </button>
+            <button class="layout-btn" id="layout-side-by-side" title="Side by Side" data-layout="side-by-side">
+              <i data-lucide="columns-2"></i>
+            </button>
+            <button class="layout-btn" id="layout-editor-only" title="Editor Only" data-layout="editor-only">
+              <i data-lucide="maximize-2"></i>
+            </button>
+          </div>
+        </div>
         <div class="title-bar-right">
-          <button class="title-btn" id="minimize-btn">−</button>
-          <button class="title-btn" id="maximize-btn">□</button>
-          <button class="title-btn close" id="close-btn">×</button>
+          <button class="title-btn" id="minimize-btn">
+            <i data-lucide="minus"></i>
+          </button>
+          <button class="title-btn" id="maximize-btn">
+            <i data-lucide="square"></i>
+          </button>
+          <button class="title-btn close" id="close-btn">
+            <i data-lucide="x"></i>
+          </button>
         </div>
       </div>
 
       <!-- Main IDE Layout -->
       <div class="ide-layout">
         <!-- File Tree Sidebar -->
-        <div class="file-sidebar">
+        <div class="file-sidebar" id="file-sidebar">
           <div class="sidebar-header">
             <h3>Explorer</h3>
             <div class="explorer-buttons">
-              <button class="btn-new-file" id="new-file-btn" title="New File">📄</button>
-              <button class="btn-new-folder" id="new-folder-btn" title="New Folder">📁</button>
-              <button class="btn-open-folder" id="open-folder-btn" title="Open Folder">📂</button>
-              <button class="btn-settings" id="settings-btn" title="Settings">⚙️</button>
+              <button class="btn-new-file" id="new-file-btn" title="New File">
+                <i data-lucide="file-plus"></i>
+              </button>
+              <button class="btn-new-folder" id="new-folder-btn" title="New Folder">
+                <i data-lucide="folder-plus"></i>
+              </button>
+              <button class="btn-open-folder" id="open-folder-btn" title="Open Folder">
+                <i data-lucide="folder-open"></i>
+              </button>
+              <button class="btn-setup" id="setup-btn" title="Air-gapped Setup">
+                <i data-lucide="settings"></i>
+              </button>
+              <button class="btn-settings" id="settings-btn" title="Settings">
+                <i data-lucide="cog"></i>
+              </button>
             </div>
           </div>
           <div class="file-tree" id="file-tree">
@@ -59,13 +99,27 @@
               <!-- Tabs will be added dynamically -->
             </div>
             <div class="tabs-actions">
-              <button class="btn-tab-action" id="save-btn" title="Save File (Ctrl+S)">💾</button>
-              <button class="btn-tab-action" id="undo-btn" title="Undo (Ctrl+Z)">↩️</button>
-              <button class="btn-tab-action" id="redo-btn" title="Redo (Ctrl+Y)">↪️</button>
-              <button class="btn-tab-action" id="history-btn" title="View History">📚</button>
-              <button class="btn-tab-action" id="find-replace-btn" title="Find & Replace">🔍</button>
-              <button class="btn-tab-action" id="theme-toggle-btn" title="Toggle Theme">🎨</button>
-              <button class="btn-tab-action" id="close-all-tabs" title="Close All">×</button>
+              <button class="btn-tab-action" id="save-btn" title="Save File (Ctrl+S)">
+                <i data-lucide="save"></i>
+              </button>
+              <button class="btn-tab-action" id="undo-btn" title="Undo (Ctrl+Z)">
+                <i data-lucide="undo"></i>
+              </button>
+              <button class="btn-tab-action" id="redo-btn" title="Redo (Ctrl+Y)">
+                <i data-lucide="redo"></i>
+              </button>
+              <button class="btn-tab-action" id="history-btn" title="View History">
+                <i data-lucide="history"></i>
+              </button>
+              <button class="btn-tab-action" id="find-replace-btn" title="Find & Replace">
+                <i data-lucide="search"></i>
+              </button>
+              <button class="btn-tab-action" id="theme-toggle-btn" title="Toggle Theme">
+                <i data-lucide="palette"></i>
+              </button>
+              <button class="btn-tab-action" id="close-all-tabs" title="Close All">
+                <i data-lucide="x"></i>
+              </button>
             </div>
           </div>
 
@@ -73,7 +127,10 @@
           <div class="editor-container" id="editor-container">
             <div class="editor-welcome">
               <div class="welcome-content">
-                <h2>🚀 Mithril AI IDE</h2>
+                <h2>
+                  <i data-lucide="rocket"></i>
+                  Mithril AI IDE
+                </h2>
                 <p>Open a file or create a new one to start coding with AI assistance</p>
                 <div class="welcome-actions">
                   <button class="btn-primary" id="welcome-new-file">New File</button>
@@ -98,13 +155,13 @@
       </div>
 
       <!-- Embedded Chat Interface -->
-      <div class="chat-interface">
+      <div class="chat-interface" id="chat-interface">
         <div class="chat-resize-handle" id="chat-resize-handle" title="Drag to resize chat">
           <div class="resize-grip"></div>
         </div>
         <div class="chat-header">
           <div class="chat-title">
-            <span class="chat-icon">🤖</span>
+            <i data-lucide="bot"></i>
             <span>AI Assistant</span>
           </div>
           <div class="chat-model-selector">
@@ -115,17 +172,29 @@
           </div>
           <div class="chat-context-indicator" style="display: none;"></div>
           <div class="chat-controls">
-            <button class="btn-chat-action" id="refresh-models" title="Refresh Models">🔄</button>
-            <button class="btn-chat-action" id="clear-chat">Clear</button>
-            <button class="btn-chat-action" id="clear-chunks" title="Clear Code Chunks" onclick="window.mithrilIDE?.clearAllChatCodeChunks?.()">🗑️</button>
-            <button class="btn-chat-action auto-replace-toggle" id="auto-replace-toggle" title="Toggle Auto Code Replacement" onclick="window.mithrilIDE?.toggleAutoReplace?.()">🔧</button>
-            <button class="btn-chat-action" id="toggle-chat">−</button>
+            <button class="btn-chat-action" id="refresh-models" title="Refresh Models">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+            <button class="btn-chat-action" id="clear-chat">
+              <i data-lucide="trash-2"></i>
+            </button>
+            <button class="btn-chat-action" id="clear-chunks" title="Clear Code Chunks" onclick="window.mithrilIDE?.clearAllChatCodeChunks?.()">
+              <i data-lucide="layers"></i>
+            </button>
+            <button class="btn-chat-action auto-replace-toggle" id="auto-replace-toggle" title="Toggle Auto Code Replacement" onclick="window.mithrilIDE?.toggleAutoReplace?.()">
+              <i data-lucide="zap"></i>
+            </button>
+            <button class="btn-chat-action" id="toggle-chat">
+              <i data-lucide="chevron-down"></i>
+            </button>
           </div>
         </div>
         
         <div class="chat-messages" id="chat-messages">
           <div class="welcome-message">
-            <div class="ai-avatar">🤖</div>
+            <div class="ai-avatar">
+              <i data-lucide="cpu"></i>
+            </div>
             <div class="message-content">
               <p>Hi! I'm your AI coding assistant. Select code to analyze it, or ask me anything about your project.</p>
             </div>
@@ -151,23 +220,29 @@
               rows="1"
             ></textarea>
             <button class="btn-send" id="send-btn">
-              <span class="send-icon">➤</span>
+              <i data-lucide="send"></i>
             </button>
           </div>
           <div class="input-hints">
-            <span class="hint">💡 Select code for context-aware assistance</span>
+            <span class="hint">
+              <i data-lucide="lightbulb"></i>
+              Select code for context-aware assistance
+            </span>
           </div>
         </div>
       </div>
-
-
 
       <!-- Settings Modal -->
       <div class="settings-modal" id="settings-modal" style="display: none;">
         <div class="settings-content">
           <div class="settings-header">
-            <h2>⚙️ IDE Settings</h2>
-            <button class="settings-close" id="settings-close">&times;</button>
+            <h2>
+              <i data-lucide="settings"></i>
+              IDE Settings
+            </h2>
+            <button class="settings-close" id="settings-close">
+              <i data-lucide="x"></i>
+            </button>
           </div>
           <div class="settings-body">
             <div class="settings-group">
@@ -217,9 +292,15 @@
         <div class="find-replace-content">
           <div class="find-section">
             <input type="text" id="find-input" placeholder="Find..." />
-            <button id="find-prev-btn">↑</button>
-            <button id="find-next-btn">↓</button>
-            <button id="find-close-btn">&times;</button>
+            <button id="find-prev-btn">
+              <i data-lucide="chevron-up"></i>
+            </button>
+            <button id="find-next-btn">
+              <i data-lucide="chevron-down"></i>
+            </button>
+            <button id="find-close-btn">
+              <i data-lucide="x"></i>
+            </button>
           </div>
           <div class="replace-section">
             <input type="text" id="replace-input" placeholder="Replace..." />
@@ -263,5 +344,230 @@
     <script src="ide-linting-manager.js"></script>
     <script src="ide-ai-manager.js"></script>
     <script src="ide-core.js"></script>
+    
+    <!-- Initialize Lucide Icons -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        lucide.createIcons();
+        
+        // Window Controls Functionality
+        const minimizeBtn = document.getElementById('minimize-btn');
+        const maximizeBtn = document.getElementById('maximize-btn');
+        const closeBtn = document.getElementById('close-btn');
+        
+        // Use the IPC renderer to communicate with main process
+        const { ipcRenderer } = require('electron');
+        
+        minimizeBtn?.addEventListener('click', async () => {
+          try {
+            await ipcRenderer.invoke('window:minimize');
+          } catch (error) {
+            console.error('Failed to minimize window:', error);
+          }
+        });
+        
+        maximizeBtn?.addEventListener('click', async () => {
+          try {
+            await ipcRenderer.invoke('window:maximize');
+          } catch (error) {
+            console.error('Failed to maximize window:', error);
+          }
+        });
+        
+        closeBtn?.addEventListener('click', async () => {
+          try {
+            await ipcRenderer.invoke('window:close');
+          } catch (error) {
+            console.error('Failed to close window:', error);
+          }
+        });
+        
+        // Layout switching functionality
+        const layoutBtns = document.querySelectorAll('.layout-btn');
+        const ideContainer = document.querySelector('.ide-container');
+        const chatInterface = document.getElementById('chat-interface');
+        const ideLayout = document.querySelector('.ide-layout');
+        let chatOriginalParent = chatInterface.parentNode;
+        let chatNextSibling = chatInterface.nextSibling;
+        
+        layoutBtns.forEach(btn => {
+          btn.addEventListener('click', function() {
+            // Remove active class from all buttons
+            layoutBtns.forEach(b => b.classList.remove('active'));
+            
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Get layout type
+            const layout = this.dataset.layout;
+            
+            // Handle chat interface positioning for side-by-side layout
+            if (layout === 'side-by-side') {
+              // Move chat interface into ide-layout
+              if (chatInterface.parentNode !== ideLayout) {
+                ideLayout.appendChild(chatInterface);
+              }
+            } else {
+              // Move chat interface back to original position
+              if (chatInterface.parentNode === ideLayout) {
+                if (chatNextSibling) {
+                  chatOriginalParent.insertBefore(chatInterface, chatNextSibling);
+                } else {
+                  chatOriginalParent.appendChild(chatInterface);
+                }
+              }
+            }
+            
+            // Apply layout
+            ideContainer.setAttribute('data-layout', layout);
+            
+            // Store layout preference
+            localStorage.setItem('ide-layout', layout);
+          });
+        });
+        
+        // Restore saved layout on page load
+        const savedLayout = localStorage.getItem('ide-layout') || 'all';
+        const activeBtn = document.querySelector(`[data-layout="${savedLayout}"]`);
+        if (activeBtn) {
+          layoutBtns.forEach(b => b.classList.remove('active'));
+          activeBtn.classList.add('active');
+          
+          // Handle chat positioning for restored layout
+          if (savedLayout === 'side-by-side') {
+            if (chatInterface.parentNode !== ideLayout) {
+              ideLayout.appendChild(chatInterface);
+            }
+          }
+          
+          ideContainer.setAttribute('data-layout', savedLayout);
+        }
+        
+        // Optimized Chat Resize Functionality
+        const chatResizeHandle = document.getElementById('chat-resize-handle');
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+        
+        if (chatResizeHandle && chatInterface && ideLayout) {
+          chatResizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = chatInterface.offsetHeight;
+            
+            // Add performance optimizations during resize
+            document.body.style.userSelect = 'none';
+            chatInterface.style.pointerEvents = 'none';
+            chatInterface.classList.add('resizing');
+            ideLayout.classList.add('resizing');
+            
+            e.preventDefault();
+          });
+          
+          document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const deltaY = startY - e.clientY;
+            const newHeight = Math.max(140, Math.min(600, startHeight + deltaY));
+            
+            // Use requestAnimationFrame for smooth updates
+            requestAnimationFrame(() => {
+              chatInterface.style.height = `${newHeight}px`;
+              ideLayout.style.height = `calc(100vh - 28px - ${newHeight}px)`;
+            });
+          });
+          
+          document.addEventListener('mouseup', () => {
+            if (isResizing) {
+              isResizing = false;
+              
+              // Remove performance optimizations
+              document.body.style.userSelect = '';
+              chatInterface.style.pointerEvents = '';
+              chatInterface.classList.remove('resizing');
+              ideLayout.classList.remove('resizing');
+            }
+          });
+        }
+        
+        // Horizontal resize for side-by-side layout
+        let isHorizontalResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        
+        document.addEventListener('mousedown', (e) => {
+          const container = document.querySelector('.ide-container');
+          if (container?.getAttribute('data-layout') === 'side-by-side') {
+            const chatInterface = document.getElementById('chat-interface');
+            if (chatInterface && e.target === chatInterface) {
+              const rect = chatInterface.getBoundingClientRect();
+              if (e.clientX - rect.left <= 6) { // Within resize handle area
+                isHorizontalResizing = true;
+                startX = e.clientX;
+                startWidth = chatInterface.offsetWidth;
+                
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'ew-resize';
+                
+                e.preventDefault();
+              }
+            }
+          }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+          if (!isHorizontalResizing) return;
+          
+          const deltaX = startX - e.clientX;
+          const newWidth = Math.max(300, Math.min(window.innerWidth * 0.6, startWidth + deltaX));
+          
+          const chatInterface = document.getElementById('chat-interface');
+          if (chatInterface) {
+            requestAnimationFrame(() => {
+              chatInterface.style.width = `${newWidth}px`;
+            });
+          }
+        });
+        
+        document.addEventListener('mouseup', () => {
+          if (isHorizontalResizing) {
+            isHorizontalResizing = false;
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+          }
+        });
+        
+        // Function to create chat message with proper avatar
+        window.createChatMessage = function(content, type = 'ai') {
+          const messageDiv = document.createElement('div');
+          messageDiv.className = 'chat-message';
+          
+          let avatarIcon = 'cpu';
+          let avatarClass = 'ai-avatar';
+          
+          if (type === 'user') {
+            avatarIcon = 'user';
+            avatarClass = 'user-avatar';
+          } else if (type === 'system') {
+            avatarIcon = 'terminal';
+            avatarClass = 'system-avatar';
+          }
+          
+          messageDiv.innerHTML = `
+            <div class="${avatarClass}">
+              <i data-lucide="${avatarIcon}"></i>
+            </div>
+            <div class="message-content">
+              <p>${content}</p>
+            </div>
+          `;
+          
+          // Re-initialize icons for new content
+          lucide.createIcons();
+          
+          return messageDiv;
+        };
+      });
+    </script>
   </body>
 </html> 

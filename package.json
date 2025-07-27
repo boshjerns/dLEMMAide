@@ -13,6 +13,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "pack-simple": "electron-packager . \"Mithril AI Assistant\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=logoM.ico",
+    "setup-nodejs": "node scripts/setup-bundled-nodejs.js",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
@@ -56,6 +57,7 @@
     "files": [
       "src/**/*",
       "node_modules/**/*",
+      "nodejs-bundle/**/*",
       "package.json",
       "logoM.ico",
       "logoM.png"

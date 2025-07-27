@@ -9,7 +9,11 @@ const fs = require('fs').promises;
 const { spawn } = require('child_process');
 const os = require('os');
 
+// Import bundled Node.js manager
+const bundledNodeJS = require('./bundled-nodejs');
+
 let mainWindow;
+let setupWindow;
 
 // Create main window
 function createWindow() {
@@ -37,21 +41,285 @@ function createWindow() {
   setupWindowControls();
 }
 
+// Create setup window
+function createSetupWindow() {
+  setupWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 800,
+    minHeight: 600,
+    maxWidth: 1000,
+    maxHeight: 800,
+    frame: false,
+    resizable: true,
+    icon: path.join(__dirname, '../logoM.ico'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true,
+      webSecurity: false
+    },
+    parent: mainWindow,
+    modal: true,
+    backgroundColor: '#1e1e1e',
+    show: false // Don't show until ready
+  });
+
+  setupWindow.loadFile(path.join(__dirname, 'setup.html'));
+  
+  // Show window when ready to avoid flash
+  setupWindow.once('ready-to-show', () => {
+    setupWindow.show();
+  });
+  
+  // Only open dev tools in development
+  if (process.env.NODE_ENV === 'development') {
+    setupWindow.webContents.openDevTools();
+  }
+
+  setupWindow.on('closed', () => {
+    setupWindow = null;
+  });
+
+  return setupWindow;
+}
+
 function setupWindowControls() {
   ipcMain.handle('window:minimize', () => {
-    mainWindow.minimize();
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (focusedWindow) {
+      focusedWindow.minimize();
+    }
   });
 
   ipcMain.handle('window:maximize', () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (focusedWindow) {
+      if (focusedWindow.isMaximized()) {
+        focusedWindow.unmaximize();
+      } else {
+        focusedWindow.maximize();
+      }
     }
   });
 
   ipcMain.handle('window:close', () => {
-    mainWindow.close();
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (focusedWindow) {
+      focusedWindow.close();
+    }
+  });
+}
+
+// Setup System Integration
+ipcMain.handle('setup:show', () => {
+  if (!setupWindow) {
+    createSetupWindow();
+  } else {
+    setupWindow.focus();
+  }
+});
+
+ipcMain.handle('setup:complete', () => {
+  if (setupWindow) {
+    setupWindow.close();
+  }
+  // Focus main window
+  if (mainWindow) {
+    mainWindow.focus();
+  }
+});
+
+// Setup System Commands
+ipcMain.handle('setup:checkOllama', async () => {
+  try {
+    const versionResult = await executeCommand('ollama', ['--version']);
+    if (versionResult.success) {
+      const listResult = await executeCommand('ollama', ['list']);
+      return {
+        installed: true,
+        running: listResult.success,
+        version: versionResult.stdout,
+        modelsPath: getOllamaModelsPath()
+      };
+    }
+    return { installed: false, running: false };
+  } catch (error) {
+    return { installed: false, running: false, error: error.message };
+  }
+});
+
+ipcMain.handle('setup:checkNodejs', async () => {
+  try {
+    // Get comprehensive environment info from bundled Node.js manager
+    const envInfo = await bundledNodeJS.getEnvironmentInfo();
+    
+    return {
+      bundled: {
+        available: envInfo.bundled.available,
+        version: envInfo.bundled.version,
+        path: envInfo.bundled.path,
+        npmPath: envInfo.bundled.npmPath
+      },
+      system: {
+        available: envInfo.system.available,
+        version: envInfo.system.version,
+        path: envInfo.system.path
+      },
+      selected: envInfo.selected,
+      status: bundledNodeJS.getStatus()
+    };
+  } catch (error) {
+    return { 
+      bundled: { available: false },
+      system: { available: false },
+      selected: 'none',
+      error: error.message 
+    };
+  }
+});
+
+ipcMain.handle('setup:listModels', async () => {
+  try {
+    const listResult = await executeCommand('ollama', ['list']);
+    if (listResult.success) {
+      const lines = listResult.stdout.split('\n');
+      if (lines.length > 1 && listResult.stdout.includes('NAME')) {
+        const models = lines.slice(1).filter(line => line.trim()).map(line => {
+          const parts = line.trim().split(/\s+/);
+          return {
+            name: parts[0],
+            size: parts[1] || 'Unknown',
+            modified: parts.slice(2).join(' ') || 'Unknown'
+          };
+        });
+        return { success: true, models };
+      }
+    }
+    return { success: true, models: [] };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('setup:installModels', async () => {
+  try {
+    const modelsPath = getOllamaModelsPath();
+    const bundledModelsPath = path.join(__dirname, '..', 'models');
+    
+    // Check if bundled models exist
+    try {
+      await fs.access(bundledModelsPath);
+    } catch {
+      return { success: false, error: 'Bundled models not found' };
+    }
+    
+    // Copy models recursively
+    await copyModelsRecursively(bundledModelsPath, modelsPath);
+    
+    return { success: true, targetPath: modelsPath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('setup:installBundledNodejs', async () => {
+  try {
+    console.log('🚀 Installing bundled Node.js...');
+    const result = await bundledNodeJS.installBundledNodejs();
+    
+    if (result.success) {
+      console.log('✅ Bundled Node.js installed successfully');
+      return { 
+        success: true, 
+        message: result.message,
+        status: bundledNodeJS.getStatus()
+      };
+    } else {
+      console.error('❌ Failed to install bundled Node.js:', result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('❌ Error during bundled Node.js installation:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+function getOllamaModelsPath() {
+  const platform = os.platform();
+  const homeDir = os.homedir();
+  
+  switch (platform) {
+    case 'win32':
+      return path.join(homeDir, '.ollama', 'models');
+    case 'darwin':
+      return path.join(homeDir, '.ollama', 'models');
+    case 'linux':
+      return path.join(homeDir, '.ollama', 'models');
+    default:
+      return path.join(homeDir, '.ollama', 'models');
+  }
+}
+
+async function copyModelsRecursively(source, target) {
+  // Ensure target directory exists
+  await fs.mkdir(target, { recursive: true });
+  
+  const entries = await fs.readdir(source, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const sourcePath = path.join(source, entry.name);
+    const targetPath = path.join(target, entry.name);
+    
+    if (entry.isDirectory()) {
+      await copyModelsRecursively(sourcePath, targetPath);
+    } else {
+      // Check if file already exists
+      try {
+        await fs.access(targetPath);
+        // File exists, skip
+      } catch {
+        // File doesn't exist, copy it
+        await fs.copyFile(sourcePath, targetPath);
+      }
+    }
+  }
+}
+
+function executeCommand(command, args = []) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: true
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      resolve({
+        success: code === 0,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code
+      });
+    });
+
+    child.on('error', (error) => {
+      resolve({
+        success: false,
+        error: error.message,
+        exitCode: -1
+      });
+    });
   });
 }
 
@@ -241,41 +509,7 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
 
 // PowerShell Integration
 ipcMain.handle('powershell:execute', async (event, command) => {
-  return new Promise((resolve) => {
-    const ps = spawn('powershell.exe', ['-Command', command], {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    ps.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    ps.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    ps.on('close', (code) => {
-      resolve({
-        success: code === 0,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: code
-      });
-    });
-
-    ps.on('error', (error) => {
-      resolve({
-        success: false,
-        error: error.message,
-        exitCode: -1
-      });
-    });
-  });
+  return executeCommand('powershell.exe', ['-Command', command]);
 });
 
 // App Event Handlers

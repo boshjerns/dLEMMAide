@@ -272,6 +272,12 @@ class MithrilAIIDE {
       this.showSettings();
     });
 
+    // Setup system
+    document.getElementById('setup-btn')?.addEventListener('click', () => {
+      console.log('🔧 Setup button clicked');
+      this.showSetup();
+    });
+
     document.getElementById('settings-close')?.addEventListener('click', () => {
       this.hideSettings();
     });
@@ -2437,6 +2443,16 @@ User request: ${userMessage}`;
 
   hideSettings() {
     document.getElementById('settings-modal').style.display = 'none';
+  }
+
+  showSetup() {
+    console.log('🔧 Opening setup window...');
+    if (typeof require !== 'undefined') {
+      const { ipcRenderer } = require('electron');
+      ipcRenderer.invoke('setup:show').catch(error => {
+        console.error('Failed to show setup window:', error);
+      });
+    }
   }
 
   showHistoryPanel() {

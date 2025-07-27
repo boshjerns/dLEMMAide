@@ -158,27 +158,41 @@ class IDEAIManager {
       return;
     }
 
-    console.log('🔄 Switching to file:', fileInfo.name);
+    console.log('🔄 Switching to file:', fileInfo.name, 'from current:', this.currentFile);
+    console.log('📄 File content preview:', fileInfo.content ? fileInfo.content.substring(0, 100) + '...' : 'EMPTY');
 
     // Save current cursor position if editor exists
     if (this.editor && this.currentFile) {
       const currentFileInfo = this.openFiles.get(this.currentFile);
       if (currentFileInfo) {
         currentFileInfo.cursor = this.editor.getCursor();
+        console.log('💾 Saved cursor position for:', this.currentFile);
       }
     }
 
+    // Update current file reference
     this.currentFile = filePath;
-    console.log('📝 Creating editor for file...');
+    
+    console.log('📝 Creating/updating editor for file...');
     await this.createOrUpdateEditor(fileInfo);
-    console.log('🏷️ Updating tab...');
+    
+    // Update tab state after editor is ready
     this.updateActiveTab(filePath);
+    
     console.log('👋 Hiding welcome screen...');
     this.hideWelcomeScreen();
     
-    // Restore cursor position
-    if (this.editor && fileInfo.cursor) {
-      this.editor.setCursor(fileInfo.cursor);
+    // Restore cursor position and focus editor
+    if (this.editor) {
+      if (fileInfo.cursor) {
+        this.editor.setCursor(fileInfo.cursor);
+        console.log('📍 Restored cursor position');
+      }
+      // Ensure editor gets focus and refresh
+      this.editor.focus();
+      this.editor.refresh();
+      console.log('✅ File switch completed for:', fileInfo.name);
+      console.log('📄 Editor now shows:', this.editor.getValue().length, 'characters');
     }
   }
 
@@ -807,6 +821,7 @@ class IDEAIManager {
     const tab = document.createElement('div');
     tab.className = 'file-tab';
     tab.dataset.filePath = fileInfo.path;
+    tab.tabIndex = 0; // Make tab focusable
     
     const tabName = document.createElement('span');
     tabName.className = 'file-tab-name';
@@ -825,8 +840,26 @@ class IDEAIManager {
     tab.appendChild(tabName);
     tab.appendChild(closeBtn);
     
-    tab.addEventListener('click', () => {
-      this.switchToFile(fileInfo.path);
+    // Fixed click handling for proper file switching
+    const handleTabSwitch = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('📁 Switching to file:', fileInfo.name, 'at path:', fileInfo.path);
+      
+      // Switch to file immediately
+      await this.switchToFile(fileInfo.path);
+    };
+    
+    // Add click event for tab switching
+    tab.addEventListener('click', handleTabSwitch);
+    
+    // Add keyboard support
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleTabSwitch(e);
+      }
     });
     
     this.tabsContainer.appendChild(tab);
