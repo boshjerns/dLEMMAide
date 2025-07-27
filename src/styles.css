@@ -1,5 +1,5 @@
 /* Mithril AI IDE - Blue-Magenta-Yellow Gradient Theme */
-image.png
+
 :root {
   /* Glass Morphism Base Colors */
   --bg-primary: #0d1117;
@@ -1558,7 +1558,7 @@ body {
   background: rgba(14, 165, 233, 0.6);
 }
 
-/* Welcome Screen - Mithril Brand */
+/* Welcome Screen - ASCII Art */
 .editor-welcome {
   display: flex;
   align-items: center;
@@ -1569,6 +1569,56 @@ body {
   overflow: hidden;
 }
 
+.ascii-logo {
+  position: relative;
+  z-index: 1;
+  user-select: none;
+  animation: retro-glow 3s ease-in-out infinite alternate;
+}
+
+.mithril-ascii {
+  font-family: 'Courier New', 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  font-size: clamp(8px, 1.5vw, 16px);
+  line-height: 1;
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+  font-weight: bold;
+  letter-spacing: 0;
+  white-space: pre;
+  
+  /* Retro gradient effect */
+  background: linear-gradient(
+    45deg,
+    #00d4ff,    /* Cyan */
+    #0099ff,    /* Blue */
+    #6600ff,    /* Purple */
+    #cc00ff,    /* Magenta */
+    #ff0099,    /* Pink */
+    #ff3366,    /* Red-pink */
+    #ff6600,    /* Orange */
+    #ffaa00     /* Yellow */
+  );
+  background-size: 800% 800%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  
+  /* Animated gradient */
+  animation: retro-rainbow 4s ease-in-out infinite;
+  
+  /* Pixelated effect */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  
+  /* Text shadow for retro glow */
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.3))
+          drop-shadow(0 0 20px rgba(0, 153, 255, 0.2))
+          drop-shadow(0 0 30px rgba(102, 0, 255, 0.1));
+}
+
+/* Background pattern */
 .editor-welcome::before {
   content: '';
   position: absolute;
@@ -1576,88 +1626,51 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(ellipse at center, 
-    rgba(0, 212, 255, 0.08) 0%, 
-    rgba(102, 51, 255, 0.04) 40%, 
-    rgba(255, 51, 204, 0.02) 70%, 
-    transparent 100%);
-  z-index: 1;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(102, 0, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255, 0, 153, 0.02) 0%, transparent 50%);
+  z-index: 0;
 }
 
-.mithril-brand {
-  text-align: center;
-  z-index: 2;
-  position: relative;
-  user-select: none;
-  animation: brandFadeIn 1.5s ease-out;
-}
-
-.ascii-art {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
-  font-weight: 900;
-  line-height: 1;
-  white-space: pre;
-  text-align: center;
-  font-size: 2vw;
-  background: linear-gradient(90deg, 
-    #00d4ff 0%,     /* Cyan */
-    #0099ff 20%,    /* Light Blue */
-    #3366ff 40%,    /* Blue */
-    #6633ff 60%,    /* Purple */
-    #9933ff 80%,    /* Magenta */
-    #ff33cc 100%    /* Pink */
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  background-size: 200% 100%;
-  animation: retroGlow 4s ease-in-out infinite;
-  filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.3));
-}
-
-.ascii-line {
-  display: block;
-  height: 1em;
-}
-
-@keyframes brandFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes retroGlow {
-  0%, 100% {
+/* Animations */
+@keyframes retro-rainbow {
+  0% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.3));
   }
   50% {
     background-position: 100% 50%;
-    filter: drop-shadow(0 0 30px rgba(255, 51, 204, 0.4));
+  }
+  100% {
+    background-position: 0% 50%;
   }
 }
 
-/* Responsive ASCII art */
+@keyframes retro-glow {
+  0% {
+    filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.3))
+            drop-shadow(0 0 20px rgba(0, 153, 255, 0.2))
+            drop-shadow(0 0 30px rgba(102, 0, 255, 0.1));
+  }
+  100% {
+    filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.5))
+            drop-shadow(0 0 25px rgba(0, 153, 255, 0.3))
+            drop-shadow(0 0 35px rgba(102, 0, 255, 0.2));
+  }
+}
+
+/* Responsive adjustments */
 @media (max-width: 768px) {
-  .ascii-art {
-    font-size: 3vw;
+  .mithril-ascii {
+    font-size: clamp(6px, 2vw, 12px);
+    padding: 10px;
   }
 }
 
 @media (max-width: 480px) {
-  .ascii-art {
-    font-size: 4vw;
-  }
-}
-
-@media (min-width: 1400px) {
-  .ascii-art {
-    font-size: 1.5rem;
+  .mithril-ascii {
+    font-size: clamp(4px, 2.5vw, 10px);
+    padding: 5px;
   }
 }
 
