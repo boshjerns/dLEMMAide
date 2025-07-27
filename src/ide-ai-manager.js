@@ -201,10 +201,16 @@ class IDEAIManager {
     
     // Clear existing editor with proper cleanup
     if (this.editor) {
+      console.log('🧹 Cleaning up existing editor');
       this.clearEditMarkers();
       this.cleanupEditorEventListeners();
+      
+      // Properly dispose of the CodeMirror instance
       this.editor.toTextArea();
       this.editor = null;
+      
+      // Small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Ensure editor container is visible and ready
@@ -213,14 +219,24 @@ class IDEAIManager {
     this.editorContainer.style.height = '100%';
     this.editorContainer.style.width = '100%';
 
-    // Create new editor
-    this.editorContainer.innerHTML = '<textarea id="code-editor"></textarea>';
-    const textarea = document.getElementById('code-editor');
-    
-    if (!textarea) {
-      console.error('❌ Failed to create textarea element');
-      return;
+    // Clean the container and create new textarea
+    // Only clear if there's no CodeMirror content, or if we're switching files
+    const existingTextarea = this.editorContainer.querySelector('#code-editor');
+    if (existingTextarea) {
+      existingTextarea.remove();
     }
+    
+    // Remove any leftover CodeMirror elements
+    const existingCM = this.editorContainer.querySelector('.CodeMirror');
+    if (existingCM) {
+      existingCM.remove();
+    }
+    
+    // Create fresh textarea element
+    const textarea = document.createElement('textarea');
+    textarea.id = 'code-editor';
+    textarea.style.display = 'none'; // CodeMirror will handle visibility
+    this.editorContainer.appendChild(textarea);
     
     if (!window.CodeMirror) {
       console.error('❌ CodeMirror not available');
@@ -232,6 +248,7 @@ class IDEAIManager {
     console.log('📝 File mode:', fileInfo.mode);
     console.log('📝 Content preview:', fileInfo.content ? fileInfo.content.substring(0, 100) + '...' : 'EMPTY');
     
+    // Create new CodeMirror instance
     this.editor = CodeMirror.fromTextArea(textarea, {
       mode: fileInfo.mode,
       theme: this.currentTheme,
@@ -282,6 +299,13 @@ class IDEAIManager {
         console.log('📄 Editor content length:', this.editor.getValue().length);
         console.log('🎨 Editor wrapper classes:', this.editor.getWrapperElement().className);
         console.log('🔍 Editor visible:', this.editor.getWrapperElement().offsetParent !== null);
+        
+        // Verify this is the only CodeMirror instance in the container
+        const cmInstances = this.editorContainer.querySelectorAll('.CodeMirror');
+        console.log('🔍 CodeMirror instances in container:', cmInstances.length);
+        if (cmInstances.length > 1) {
+          console.warn('⚠️ Multiple CodeMirror instances detected - this may cause conflicts');
+        }
       }
     }, 100);
   }
@@ -429,6 +453,9 @@ class IDEAIManager {
       this.isActivelySelecting = true;
       this.clearSelectionTimeout();
       
+      // **NEW: Update highlighting during selection change**
+      setTimeout(() => this.updateRealtimeHighlight(), 0);
+      
       console.log('🎯 Selection starting...');
     });
     
@@ -496,6 +523,9 @@ class IDEAIManager {
     
     const selection = this.editor.getSelection();
     const currentSelectionLength = selection.trim().length;
+    
+    // **NEW: Update visual highlighting immediately - no waiting!**
+    this.updateRealtimeHighlight();
     
     // Track selection growth
     const isGrowingSelection = this.lastSelectionLength && 
@@ -575,6 +605,39 @@ class IDEAIManager {
         this.clearSelectionHighlight();
         this.notifySelectionChange(false);
       }
+    }
+  }
+
+  // **NEW: Immediate visual highlighting during selection**
+  updateRealtimeHighlight() {
+    if (!this.editor) return;
+    
+    const selection = this.editor.getSelection();
+    const hasSelection = selection && selection.trim().length > 0;
+    
+    if (hasSelection) {
+      // Get current selection range
+      const currentRange = {
+        from: this.editor.getCursor('from'),
+        to: this.editor.getCursor('to')
+      };
+      
+      // Update highlighting immediately
+      this.clearSelectionHighlight();
+      const marker = this.editor.markText(
+        currentRange.from,
+        currentRange.to,
+        {
+          className: 'ai-selection-highlight',
+          title: 'AI-ready selection - Right-click for actions'
+        }
+      );
+      this.selectionMarker = marker;
+      
+      console.log(`🎨 Real-time highlight updated: ${selection.trim().length} chars`);
+    } else {
+      // No selection - clear highlighting
+      this.clearSelectionHighlight();
     }
   }
 
@@ -2114,22 +2177,21 @@ class IDEAIManager {
     
     console.log('🧹 Cleaning up editor event listeners');
     
-    // Remove all event listeners
+    // Use CodeMirror's proper event cleanup methods
     this.editor.off('change');
     this.editor.off('beforeSelectionChange');
     this.editor.off('cursorActivity');
     this.editor.off('contextmenu');
+    this.editor.off('dblclick');
+    this.editor.off('mousedown');
+    this.editor.off('mouseup');
+    this.editor.off('mousemove');
+    this.editor.off('focus');
+    this.editor.off('blur');
     
-    // Remove mouse event listeners from wrapper element
-    const editorElement = this.editor.getWrapperElement();
-    if (editorElement) {
-      // Clone and replace to remove all event listeners
-      const newElement = editorElement.cloneNode(true);
-      if (editorElement.parentNode) {
-        editorElement.parentNode.replaceChild(newElement, editorElement);
-      }
-    }
+    // Clear any custom key maps that were added
+    this.editor.removeKeyMap();
     
-    console.log('✅ Editor event listeners cleaned up');
+    console.log('✅ Editor event listeners cleaned up properly');
   }
 } 

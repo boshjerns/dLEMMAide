@@ -166,8 +166,57 @@ async function checkOllama() {
         }
         
       } else {
-        logOutput('ollama-log', 'Ollama is installed but not running. Please start Ollama service.', 'error');
-        updateStepStatus('ollama', 'error', 'Not Running');
+        // Ollama is installed but not running - try to start it
+        logOutput('ollama-log', 'Ollama is installed but not running. Attempting to start Ollama...', 'info');
+        updateStepStatus('ollama', 'checking', 'Starting...');
+        checkBtn.innerHTML = '<span class="spinner"></span>Starting...';
+        
+        // Try to start Ollama service
+        logOutput('ollama-log', 'Starting Ollama service...', 'info');
+        
+        // Start Ollama serve in the background
+        const startResult = await startOllamaService();
+        
+        if (startResult.success) {
+          logOutput('ollama-log', 'Ollama service started successfully', 'success');
+          
+          // Wait a moment for the service to fully start up
+          logOutput('ollama-log', 'Waiting for service to initialize...', 'info');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Check again if service is now running
+          const recheckResult = await executeCommand('ollama', ['list']);
+          
+          if (recheckResult.success) {
+            logOutput('ollama-log', 'Ollama service is now running', 'success');
+            
+            // Get Ollama models path
+            const modelsPath = getOllamaModelsPath();
+            const ollamaPathEl = document.getElementById('ollama-path');
+            if (ollamaPathEl) {
+              ollamaPathEl.style.display = 'block';
+              ollamaPathEl.textContent = `Models Path: ${modelsPath}`;
+            }
+            
+            updateStepStatus('ollama', 'success', 'Started & Running');
+            setupState.ollamaInstalled = true;
+            setupState.currentStep = 2;
+            updateProgress();
+            
+            // Enable next step
+            const nextBtn = document.getElementById('setup-nodejs-btn');
+            if (nextBtn) {
+              nextBtn.disabled = false;
+            }
+          } else {
+            logOutput('ollama-log', 'Ollama service started but still not responding. Please check manually.', 'error');
+            updateStepStatus('ollama', 'error', 'Start Failed');
+          }
+        } else {
+          logOutput('ollama-log', `Failed to start Ollama: ${startResult.error || startResult.stderr}`, 'error');
+          logOutput('ollama-log', 'Please start Ollama manually and try again', 'error');
+          updateStepStatus('ollama', 'error', 'Start Failed');
+        }
       }
     } else {
       logOutput('ollama-log', 'Ollama not found on system', 'error');
@@ -184,6 +233,53 @@ async function checkOllama() {
   checkBtn.disabled = false;
   checkBtn.classList.remove('loading');
   checkBtn.innerHTML = 'Recheck Ollama';
+}
+
+// Helper function to start Ollama service
+async function startOllamaService() {
+  try {
+    const platform = os.platform();
+    
+    if (platform === 'win32') {
+      // On Windows, try to start Ollama service
+      // First check if it's a Windows service
+      const serviceResult = await executeCommand('sc', ['query', 'Ollama']);
+      
+      if (serviceResult.success) {
+        // It's a Windows service - try to start it
+        logOutput('ollama-log', 'Starting Ollama Windows service...', 'info');
+        return await executeCommand('sc', ['start', 'Ollama']);
+      } else {
+        // Not a service - try to run ollama serve
+        logOutput('ollama-log', 'Starting Ollama with serve command...', 'info');
+        // Use spawn with detached option to run in background
+        const { spawn } = require('child_process');
+        const child = spawn('ollama', ['serve'], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref(); // Allow parent to exit independently
+        
+        return { success: true, message: 'Ollama serve started in background' };
+      }
+    } else {
+      // On macOS/Linux, use ollama serve
+      logOutput('ollama-log', 'Starting Ollama with serve command...', 'info');
+      const { spawn } = require('child_process');
+      const child = spawn('ollama', ['serve'], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref(); // Allow parent to exit independently
+      
+      return { success: true, message: 'Ollama serve started in background' };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 function getOllamaModelsPath() {

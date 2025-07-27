@@ -423,6 +423,11 @@
             
             // Store layout preference
             localStorage.setItem('ide-layout', layout);
+            
+            // Reinitialize IDE features after layout change
+            if (window.mithrilIDE?.reinitializeAfterLayoutChange) {
+              window.mithrilIDE.reinitializeAfterLayoutChange();
+            }
           });
         });
         
@@ -441,6 +446,13 @@
           }
           
           ideContainer.setAttribute('data-layout', savedLayout);
+          
+          // Reinitialize IDE features after restoring layout
+          setTimeout(() => {
+            if (window.mithrilIDE?.reinitializeAfterLayoutChange) {
+              window.mithrilIDE.reinitializeAfterLayoutChange();
+            }
+          }, 100);
         }
         
         // Optimized Chat Resize Functionality

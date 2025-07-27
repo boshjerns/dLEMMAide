@@ -629,7 +629,12 @@ Tool selection rules:
           return await this.executeChunkAction('refactor', targetChunk, userMessage);
         }
         if (!selectedText) {
-          return 'Please select some code to refactor.';
+          // No selection - check if we can refactor the entire file
+          if (currentFile) {
+            console.log('🔧 No selection, attempting to refactor entire file');
+            return await this.editFile(currentFile, userMessage, userMessage);
+          }
+          return 'Please select some code to refactor or open a file.';
         }
         return await this.refactorCode(selectedText, userMessage);
         
@@ -646,7 +651,12 @@ Tool selection rules:
             console.log('🔧 Detected file-based fix request for:', extractedFilename);
             return await this.editFile(extractedFilename, userMessage, userMessage);
           }
-          return 'Please select some code to fix or specify a filename in your message.';
+          // No selection - check if we can fix the entire file
+          if (currentFile) {
+            console.log('🔧 No selection, attempting to fix entire file');
+            return await this.editFile(currentFile, userMessage, userMessage);
+          }
+          return 'Please select some code to fix or open a file.';
         }
         return await this.fixIssues(selectedText, userMessage);
         
@@ -656,7 +666,12 @@ Tool selection rules:
           return await this.executeChunkAction('optimize', targetChunk, userMessage);
         }
         if (!selectedText) {
-          return 'Please select some code to optimize.';
+          // No selection - check if we can optimize the entire file
+          if (currentFile) {
+            console.log('🔧 No selection, attempting to optimize entire file');
+            return await this.editFile(currentFile, userMessage, userMessage);
+          }
+          return 'Please select some code to optimize or open a file.';
         }
         return await this.optimizeCode(selectedText, userMessage);
         
@@ -2766,21 +2781,70 @@ User request: ${userMessage}`;
     console.log('🔧 Selected text length:', selectedText.length);
     console.log('🔧 User message:', message);
     
+    // Check if we have a current file to work with
+    const currentFile = this.ideAIManager?.getCurrentFilePath();
+    if (!currentFile) {
+      return 'No file is currently open to refactor.';
+    }
+
     const systemPrompt = `You are a code refactoring expert. Refactor the provided code according to the user's request.
 
-Instructions:
-- Wrap your refactored code in triple backticks with language identifier
-- You may provide brief explanations before or after the code block
-- Make substantial improvements while maintaining functionality
+CRITICAL INSTRUCTIONS:
+- Return ONLY the refactored code
+- NO explanations, descriptions, or commentary  
+- NO markdown formatting (no \`\`\` blocks)
+- NO HTML tags or other content
+- Just raw, refactored code that can directly replace the selection
 
 Code to refactor:
 ${selectedText}
 
 User request: "${message}"
 
-Provide the refactored code:`;
+Refactored code:`;
 
-    return await this.generateWithModel(this.selectedModel, message, systemPrompt);
+    try {
+      console.log('🤖 Generating refactored content with AI...');
+      const refactoredContent = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+      
+      // Clean the AI response to get pure code
+      let cleanedContent = this.extractCodeFromResponse(refactoredContent);
+      if (!cleanedContent || !cleanedContent.trim()) {
+        cleanedContent = refactoredContent;
+        console.log('✏️ Using entire AI response as refactored content');
+      }
+      
+      // Apply final cleaning
+      cleanedContent = this.cleanCodeArtifacts(cleanedContent);
+      console.log('🧹 Applied artifact cleaning to refactored content');
+      
+      // Validate the refactored content
+      if (!cleanedContent || cleanedContent.trim().length === 0) {
+        console.error('❌ AI generated empty content');
+        return '❌ Error: Could not generate valid refactored content. Please try again.';
+      }
+
+      console.log('✏️ Refactored content length:', cleanedContent.length);
+      console.log('✏️ Content preview:', cleanedContent.substring(0, 200) + '...');
+
+      // Get current selection info for replacement
+      const selectionInfo = this.ideAIManager?.getSelectedTextWithPosition();
+      if (!selectionInfo) {
+        console.error('❌ No selection info available');
+        return '❌ Error: Could not get selection information for replacement.';
+      }
+
+      // Replace the selected text with refactored code
+      console.log('🔄 Replacing selected text with refactored code...');
+      await this.ideAIManager.replaceSelectedCode(cleanedContent);
+      
+      console.log('✅ Code refactoring completed successfully');
+      return `✅ Code refactored successfully. ${cleanedContent.split('\n').length} lines of code updated.`;
+      
+    } catch (error) {
+      console.error('❌ Error during refactoring:', error);
+      return `❌ Error: Could not refactor code. ${error.message}`;
+    }
   }
 
   async explainCode(selectedText, message) {
@@ -2810,21 +2874,72 @@ Provide a clear, detailed explanation that helps understand the code.`;
     console.log('⚡ Selected text length:', selectedText.length);
     console.log('⚡ User message:', message);
     
-    const systemPrompt = `You are a code optimization expert. Optimize the provided code according to the user's request.
+    // Check if we have a current file to work with
+    const currentFile = this.ideAIManager?.getCurrentFilePath();
+    if (!currentFile) {
+      return 'No file is currently open to optimize.';
+    }
 
-Instructions:
-- Wrap your optimized code in triple backticks with language identifier
-- You may provide brief explanations before or after the code block
-- Make significant performance improvements while maintaining functionality
+    const systemPrompt = `You are a performance optimization expert. Optimize the provided code according to the user's request.
+
+CRITICAL INSTRUCTIONS:
+- Return ONLY the optimized code
+- NO explanations, descriptions, or commentary  
+- NO markdown formatting (no \`\`\` blocks)
+- NO HTML tags or other content
+- Just raw, optimized code that can directly replace the selection
+- Focus on performance improvements, efficiency, and best practices
+- Maintain the original functionality while improving speed and resource usage
 
 Code to optimize:
 ${selectedText}
 
 User request: "${message}"
 
-Provide the optimized code:`;
+Optimized code:`;
 
-    return await this.generateWithModel(this.selectedModel, message, systemPrompt);
+    try {
+      console.log('🤖 Generating optimized content with AI...');
+      const optimizedContent = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+      
+      // Clean the AI response to get pure code
+      let cleanedContent = this.extractCodeFromResponse(optimizedContent);
+      if (!cleanedContent || !cleanedContent.trim()) {
+        cleanedContent = optimizedContent;
+        console.log('✏️ Using entire AI response as optimized content');
+      }
+      
+      // Apply final cleaning
+      cleanedContent = this.cleanCodeArtifacts(cleanedContent);
+      console.log('🧹 Applied artifact cleaning to optimized content');
+      
+      // Validate the optimized content
+      if (!cleanedContent || cleanedContent.trim().length === 0) {
+        console.error('❌ AI generated empty content');
+        return '❌ Error: Could not generate valid optimized content. Please try again.';
+      }
+
+      console.log('✏️ Optimized content length:', cleanedContent.length);
+      console.log('✏️ Content preview:', cleanedContent.substring(0, 200) + '...');
+
+      // Get current selection info for replacement
+      const selectionInfo = this.ideAIManager?.getSelectedTextWithPosition();
+      if (!selectionInfo) {
+        console.error('❌ No selection info available');
+        return '❌ Error: Could not get selection information for replacement.';
+      }
+
+      // Replace the selected text with optimized code
+      console.log('🔄 Replacing selected text with optimized code...');
+      await this.ideAIManager.replaceSelectedCode(cleanedContent);
+      
+      console.log('✅ Code optimization completed successfully');
+      return `✅ Code optimized successfully. ${cleanedContent.split('\n').length} lines of code updated.`;
+      
+    } catch (error) {
+      console.error('❌ Error during optimization:', error);
+      return `❌ Error: Could not optimize code. ${error.message}`;
+    }
   }
 
   async fixIssues(selectedText, message) {
@@ -2832,11 +2947,20 @@ Provide the optimized code:`;
     console.log('🐛 Selected text length:', selectedText.length);
     console.log('🐛 User message:', message);
     
+    // Check if we have a current file to work with
+    const currentFile = this.ideAIManager?.getCurrentFilePath();
+    if (!currentFile) {
+      return 'No file is currently open to fix.';
+    }
+
     const systemPrompt = `You are a debugging expert. Fix all issues in the provided code according to the user's request.
 
-Instructions:
-- Wrap your fixed code in triple backticks with language identifier
-- You may provide brief explanations before or after the code block
+CRITICAL INSTRUCTIONS:
+- Return ONLY the fixed code
+- NO explanations, descriptions, or commentary  
+- NO markdown formatting (no \`\`\` blocks)
+- NO HTML tags or other content
+- Just raw, fixed code that can directly replace the selection
 - Fix all syntax errors, bugs, and issues while maintaining functionality
 
 Code to fix:
@@ -2844,9 +2968,50 @@ ${selectedText}
 
 User request: "${message}"
 
-Provide the fixed code:`;
+Fixed code:`;
 
-    return await this.generateWithModel(this.selectedModel, message, systemPrompt);
+    try {
+      console.log('🤖 Generating fixed content with AI...');
+      const fixedContent = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+      
+      // Clean the AI response to get pure code
+      let cleanedContent = this.extractCodeFromResponse(fixedContent);
+      if (!cleanedContent || !cleanedContent.trim()) {
+        cleanedContent = fixedContent;
+        console.log('✏️ Using entire AI response as fixed content');
+      }
+      
+      // Apply final cleaning
+      cleanedContent = this.cleanCodeArtifacts(cleanedContent);
+      console.log('🧹 Applied artifact cleaning to fixed content');
+      
+      // Validate the fixed content
+      if (!cleanedContent || cleanedContent.trim().length === 0) {
+        console.error('❌ AI generated empty content');
+        return '❌ Error: Could not generate valid fixed content. Please try again.';
+      }
+
+      console.log('✏️ Fixed content length:', cleanedContent.length);
+      console.log('✏️ Content preview:', cleanedContent.substring(0, 200) + '...');
+
+      // Get current selection info for replacement
+      const selectionInfo = this.ideAIManager?.getSelectedTextWithPosition();
+      if (!selectionInfo) {
+        console.error('❌ No selection info available');
+        return '❌ Error: Could not get selection information for replacement.';
+      }
+
+      // Replace the selected text with fixed code
+      console.log('🔄 Replacing selected text with fixed code...');
+      await this.ideAIManager.replaceSelectedCode(cleanedContent);
+      
+      console.log('✅ Code fixing completed successfully');
+      return `✅ Code issues fixed successfully. ${cleanedContent.split('\n').length} lines of code updated.`;
+      
+    } catch (error) {
+      console.error('❌ Error during fixing:', error);
+      return `❌ Error: Could not fix code issues. ${error.message}`;
+    }
   }
 
   async analyzeCode(selectedText, message) {
@@ -3887,6 +4052,46 @@ Explain what this code does, how it works, and any important concepts. Provide a
         });
       }, 100);
     });
+  }
+
+  // Reinitialize IDE features after layout changes
+  reinitializeAfterLayoutChange() {
+    console.log('🔄 Reinitializing IDE features after layout change...');
+    
+    // Refresh CodeMirror editor if it exists
+    if (this.ideAIManager?.editor) {
+      try {
+        setTimeout(() => {
+          this.ideAIManager.editor.refresh();
+          this.ideAIManager.editor.focus();
+          console.log('✅ CodeMirror editor refreshed');
+        }, 50);
+      } catch (error) {
+        console.warn('⚠️ Could not refresh CodeMirror editor:', error);
+      }
+    }
+    
+    // Reinitialize selection tracking
+    if (this.ideAIManager?.setupSelectionTracking) {
+      try {
+        this.ideAIManager.setupSelectionTracking();
+        console.log('✅ Selection tracking reinitialized');
+      } catch (error) {
+        console.warn('⚠️ Could not reinitialize selection tracking:', error);
+      }
+    }
+    
+    // Reinitialize linting
+    if (this.ideAIManager?.initializeLinting) {
+      try {
+        this.ideAIManager.initializeLinting();
+        console.log('✅ Linting reinitialized');
+      } catch (error) {
+        console.warn('⚠️ Could not reinitialize linting:', error);
+      }
+    }
+    
+    console.log('✅ IDE reinitialization completed');
   }
 }
 
