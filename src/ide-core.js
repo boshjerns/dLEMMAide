@@ -101,6 +101,7 @@ class MithrilAIIDE {
 
     // IDE integration
     this.ideAIManager = null;
+    this.ideTerminalManager = null;
     this.fileTree = new Map();
     this.currentContext = null;
     
@@ -121,6 +122,11 @@ class MithrilAIIDE {
       // Initialize IDE AI Manager
       this.ideAIManager = new IDEAIManager(this);
       console.log('🤖 AI Manager initialized');
+      
+      // Initialize Terminal Manager
+      this.ideTerminalManager = new IDETerminalManager();
+      this.ideTerminalManager.initializeTerminal();
+      console.log('🖥️ Terminal Manager initialized');
       
       console.log('✅ Mithril AI IDE initialized successfully');
     } catch (error) {
@@ -1339,7 +1345,7 @@ Please reference these code chunks in your response when relevant. You can refer
     }
   }
 
-  // File context menu for rename/delete operations
+  // File context menu for file operations including execution
   showFileContextMenu(event, file) {
     // Remove any existing context menu
     const existingMenu = document.querySelector('.file-context-menu');
@@ -1352,28 +1358,66 @@ Please reference these code chunks in your response when relevant. You can refer
     menu.style.position = 'fixed';
     menu.style.left = `${event.clientX}px`;
     menu.style.top = `${event.clientY}px`;
-    menu.style.background = '#2d2d2d';
-    menu.style.border = '1px solid #555';
-    menu.style.borderRadius = '4px';
+    menu.style.background = 'var(--bg-secondary)';
+    menu.style.border = '1px solid var(--border-color)';
+    menu.style.borderRadius = '6px';
     menu.style.padding = '4px 0';
     menu.style.zIndex = '10000';
-    menu.style.minWidth = '120px';
-    menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+    menu.style.minWidth = '160px';
+    menu.style.boxShadow = 'var(--glass-shadow)';
+    menu.style.backdropFilter = 'var(--glass-blur)';
 
+    // Check if file can be executed
+    const canExecute = this.ideTerminalManager && this.ideTerminalManager.canExecuteFile(file.path);
+    
+    // Add run option if file is executable
+    if (canExecute) {
+      const runCommand = this.ideTerminalManager.getRunCommand(file.path);
+      const runOption = document.createElement('div');
+      runOption.className = 'context-menu-item';
+      runOption.innerHTML = `<span class="menu-icon">🚀</span> ${runCommand}`;
+      runOption.onclick = () => {
+        menu.remove();
+        this.executeFile(file.path);
+      };
+      menu.appendChild(runOption);
+      
+      // Add separator
+      const separator = document.createElement('div');
+      separator.className = 'context-menu-separator';
+      menu.appendChild(separator);
+    }
+
+    // Open file option
+    const openOption = document.createElement('div');
+    openOption.className = 'context-menu-item';
+    openOption.innerHTML = '<span class="menu-icon">📝</span> Open';
+    openOption.onclick = () => {
+      menu.remove();
+      this.openFile(file.path);
+    };
+    menu.appendChild(openOption);
+
+    // Rename option
     const renameOption = document.createElement('div');
-    renameOption.textContent = '✏️ Rename';
-    renameOption.style.padding = '8px 12px';
-    renameOption.style.cursor = 'pointer';
-    renameOption.style.color = '#fff';
-    renameOption.style.fontSize = '13px';
-    renameOption.onmouseover = () => renameOption.style.background = '#404040';
-    renameOption.onmouseout = () => renameOption.style.background = 'transparent';
+    renameOption.className = 'context-menu-item';
+    renameOption.innerHTML = '<span class="menu-icon">✏️</span> Rename';
     renameOption.onclick = () => {
       menu.remove();
       this.renameFile(file);
     };
-
     menu.appendChild(renameOption);
+
+    // Open in terminal option (for setting working directory)
+    const terminalOption = document.createElement('div');
+    terminalOption.className = 'context-menu-item';
+    terminalOption.innerHTML = '<span class="menu-icon">🖥️</span> Open in Terminal';
+    terminalOption.onclick = () => {
+      menu.remove();
+      this.openInTerminal(file.path);
+    };
+    menu.appendChild(terminalOption);
+
     document.body.appendChild(menu);
 
     // Remove menu when clicking elsewhere
@@ -1386,6 +1430,30 @@ Please reference these code chunks in your response when relevant. You can refer
     setTimeout(() => {
       document.addEventListener('click', removeMenu);
     }, 100);
+  }
+
+  // Execute file in terminal
+  executeFile(filePath) {
+    console.log('🚀 Executing file from context menu:', filePath);
+    if (this.ideTerminalManager) {
+      this.ideTerminalManager.executeFile(filePath);
+    } else {
+      console.error('❌ Terminal manager not available');
+    }
+  }
+
+  // Open file directory in terminal
+  openInTerminal(filePath) {
+    console.log('🖥️ Opening in terminal:', filePath);
+    if (this.ideTerminalManager) {
+      const path = require('path');
+      const directory = path.dirname(filePath);
+      this.ideTerminalManager.setWorkingDirectory(directory);
+      this.ideTerminalManager.showTerminal();
+      this.ideTerminalManager.appendOutput(`📁 Working directory set to: ${directory}`);
+    } else {
+      console.error('❌ Terminal manager not available');
+    }
   }
 
   // Rename file functionality

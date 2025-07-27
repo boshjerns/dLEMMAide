@@ -117,6 +117,9 @@
               <button class="btn-tab-action" id="theme-toggle-btn" title="Toggle Theme">
                 <i data-lucide="palette"></i>
               </button>
+              <button class="btn-tab-action" id="toggle-terminal-btn" title="Toggle Terminal">
+                <i data-lucide="terminal"></i>
+              </button>
               <button class="btn-tab-action" id="close-all-tabs" title="Close All">
                 <i data-lucide="x"></i>
               </button>
@@ -150,6 +153,47 @@
                 <button class="btn-ai-action" data-action="optimize">Optimize</button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal Panel -->
+      <div class="terminal-panel" id="terminal-panel" style="display: none;">
+        <div class="terminal-resize-handle" id="terminal-resize-handle" title="Drag to resize terminal">
+          <div class="resize-grip"></div>
+        </div>
+        <div class="terminal-header" id="terminal-header">
+          <div class="terminal-title">
+            <i data-lucide="terminal"></i>
+            <span>Terminal</span>
+          </div>
+          <div class="terminal-controls">
+            <button class="btn-terminal-action" id="clear-terminal-btn" title="Clear Terminal">
+              <i data-lucide="trash-2"></i>
+            </button>
+            <button class="btn-terminal-action" id="stop-process-btn" title="Stop Process">
+              <i data-lucide="square"></i>
+            </button>
+            <button class="btn-terminal-action" id="copy-output-btn" title="Copy Output">
+              <i data-lucide="copy"></i>
+            </button>
+            <button class="btn-terminal-action" id="terminal-header-toggle-btn" title="Minimize/Expand Terminal">
+              <i data-lucide="chevron-down"></i>
+            </button>
+          </div>
+        </div>
+        
+        <div class="terminal-content">
+          <div class="terminal-output" id="terminal-output">
+            <div class="terminal-line terminal-welcome">
+              <span class="terminal-timestamp">[--:--:--]</span>
+              🖥️ Terminal ready. Type commands or run files from the explorer.
+            </div>
+          </div>
+          
+          <div class="terminal-input-area">
+            <span class="terminal-prompt">$</span>
+            <input type="text" class="terminal-input" id="terminal-input" placeholder="Enter command..." />
           </div>
         </div>
       </div>
@@ -342,6 +386,7 @@
     <!-- App Scripts -->
     <script src="cli-tools.js"></script>
     <script src="ide-linting-manager.js"></script>
+    <script src="ide-terminal-manager.js"></script>
     <script src="ide-ai-manager.js"></script>
     <script src="ide-core.js"></script>
     
