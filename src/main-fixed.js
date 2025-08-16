@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const axios = require('axios');
+const platformUtils = require('./platform-utils');
 
 let mainWindow;
 const ollamaBaseURL = 'http://localhost:11434';
@@ -50,9 +51,9 @@ function createWindow() {
       mainWindow = null;
     });
 
-    // Open DevTools in dev mode
-    if (process.argv.includes('--dev')) {
-      mainWindow.webContents.openDevTools();
+    // Open DevTools in development mode
+    if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 
     // Force show after 3 seconds if not shown
@@ -181,6 +182,13 @@ function setupIPC() {
           prompt,
           system,
           stream: true,
+          options: {
+            temperature: 0.7,
+            top_p: 0.9,
+            top_k: 40,
+            num_ctx: 32768,
+            num_predict: 4096
+          }
         },
         {
           responseType: 'stream',
@@ -293,14 +301,14 @@ function setupIPC() {
     }
   });
 
-  // Enhanced command execution with multiple shell support
-  ipcMain.handle('powershell:execute', async (event, command) => {
-    // Backward compatibility - default to PowerShell
-    return await executeCommand(event, command, 'powershell');
+  // Enhanced command execution with bash support for macOS
+  ipcMain.handle('bash:execute', async (event, command) => {
+    // macOS native - default to bash
+    return await executeCommand(event, command, 'bash');
   });
 
   // New unified command execution handler
-  ipcMain.handle('command:execute', async (event, command, shell = 'cmd', options = {}) => {
+  ipcMain.handle('command:execute', async (event, command, shell = 'bash', options = {}) => {
     return await executeCommand(event, command, shell, options);
   });
 
@@ -308,7 +316,7 @@ function setupIPC() {
   const activeSessions = new Map();
 
   // Create interactive terminal session
-  ipcMain.handle('terminal:create', async (event, sessionId, shell = 'cmd', options = {}) => {
+  ipcMain.handle('terminal:create', async (event, sessionId, shell = 'bash', options = {}) => {
     try {
       const shellConfig = getShellConfig(shell);
       console.log(
@@ -426,138 +434,74 @@ function setupIPC() {
   });
 
   // Unified command execution function
-  async function executeCommand(event, command, shell = 'cmd', options = {}) {
+  async function executeCommand(event, command, shell = 'bash', options = {}) {
     try {
-      const shellConfig = getShellConfig(shell);
-      console.log(`💻 Executing ${shellConfig.name}: ${command}`);
+      console.log(`💻 Executing ${shell}: ${command}`);
 
       if (options.cwd) {
         console.log(`📁 Working directory: ${options.cwd}`);
+        // Change to directory before executing command
+        command = `cd "${options.cwd}" && ${command}`;
       }
 
-      const { spawn } = require('child_process');
-
-      return new Promise((resolve, reject) => {
-        const childProcess = spawn(shellConfig.executable, [...shellConfig.args, command], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: shellConfig.useShell,
-          cwd: options.cwd || undefined,
-          env: { ...process.env, ...options.env },
-        });
-
-        let output = '';
-        let error = '';
-
-        childProcess.stdout.on('data', data => {
-          const chunk = data.toString();
-          output += chunk;
-
-          // Send real-time output to renderer if requested
-          if (options.showOutput && options.streamId && chunk.trim()) {
-            event.sender.send('command:output', {
-              streamId: options.streamId,
-              type: 'stdout',
-              data: chunk.trim(),
-            });
-          }
-        });
-
-        childProcess.stderr.on('data', data => {
-          const chunk = data.toString();
-          error += chunk;
-
-          // Send real-time errors to renderer if requested
-          if (options.showOutput && options.streamId && chunk.trim()) {
-            event.sender.send('command:output', {
-              streamId: options.streamId,
-              type: 'stderr',
-              data: chunk.trim(),
-            });
-          }
-        });
-
-        childProcess.on('close', code => {
-          console.log(`✅ ${shellConfig.name} command completed with code: ${code}`);
-
-          // Send completion signal to renderer
-          if (options.showOutput && options.streamId) {
-            event.sender.send('command:complete', {
-              streamId: options.streamId,
-              success: code === 0,
-              exitCode: code,
-            });
-          }
-
-          resolve({
-            success: code === 0,
-            output: output.trim(),
-            error: error.trim(),
-            exitCode: code,
-            command: command,
-            shell: shell,
-          });
-        });
-
-        childProcess.on('error', err => {
-          console.error(`❌ ${shellConfig.name} error: ${err.message}`);
-          reject(new Error(`Failed to execute ${shellConfig.name} command: ${err.message}`));
-        });
-
-        // Timeout (configurable, default 30 seconds)
-        const timeout = options.timeout || 30000;
-        setTimeout(() => {
-          childProcess.kill();
-          reject(
-            new Error(`${shellConfig.name} command timed out after ${timeout / 1000} seconds`),
-          );
-        }, timeout);
+      const result = await platformUtils.runCommand(command, {
+        shell: shell,
+        env: { ...process.env, ...options.env }
       });
+
+      console.log(
+        `✅ Command finished with code ${result.code}: ${result.success ? 'Success' : 'Failed'}`,
+      );
+
+      if (result.output) {
+        console.log(`📤 Output: ${result.output.slice(0, 200)}${result.output.length > 200 ? '...' : ''}`);
+      }
+
+      if (result.error) {
+        console.log(`❌ Error: ${result.error.slice(0, 200)}${result.error.length > 200 ? '...' : ''}`);
+      }
+
+      // Send real-time output to renderer if requested
+      if (options.showOutput && options.streamId) {
+        if (result.output.trim()) {
+          event.sender.send('command:output', {
+            streamId: options.streamId,
+            type: 'stdout',
+            data: result.output.trim(),
+          });
+        }
+        if (result.error.trim()) {
+          event.sender.send('command:output', {
+            streamId: options.streamId,
+            type: 'stderr',
+            data: result.error.trim(),
+          });
+        }
+        
+        // Send completion signal
+        event.sender.send('command:complete', {
+          streamId: options.streamId,
+          success: result.success,
+          exitCode: result.code,
+        });
+      }
+
+      return {
+        success: result.success,
+        output: result.output,
+        error: result.error,
+        exitCode: result.code,
+        command: command,
+        shell: shell,
+      };
     } catch (error) {
       throw new Error(`Failed to execute command: ${error.message}`);
     }
   }
 
-  // Shell configuration
+  // Shell configuration using platform utils
   function getShellConfig(shell) {
-    const configs = {
-      powershell: {
-        name: 'PowerShell',
-        executable: 'powershell.exe',
-        args: ['-Command'],
-        sessionArgs: ['-NoExit', '-NoProfile'],
-        useShell: false,
-      },
-      cmd: {
-        name: 'Command Prompt',
-        executable: 'cmd.exe',
-        args: ['/c'],
-        sessionArgs: [],
-        useShell: false,
-      },
-      wsl: {
-        name: 'WSL',
-        executable: 'wsl.exe',
-        args: ['--'],
-        sessionArgs: [],
-        useShell: false,
-      },
-      'git-bash': {
-        name: 'Git Bash',
-        executable: 'bash.exe',
-        args: ['-c'],
-        sessionArgs: ['-i'],
-        useShell: false,
-      },
-      node: {
-        name: 'Node.js',
-        executable: 'node.exe',
-        args: ['-e'],
-        sessionArgs: ['-i'],
-        useShell: false,
-      },
-    };
-
-    return configs[shell] || configs['cmd'];
+    return platformUtils.getShellConfig(shell);
   }
 
   // Environment detection
@@ -577,7 +521,7 @@ function setupIPC() {
         return { available: false, error: 'Unknown environment' };
       }
 
-      const result = await executeCommand(event, command, 'cmd');
+      const result = await executeCommand(event, command, 'bash');
       return {
         available: result.success,
         version: result.output.trim(),

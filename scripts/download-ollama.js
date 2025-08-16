@@ -474,10 +474,8 @@ class OfflineInstaller {
     }
     
     detectPlatform() {
-        const platform = os.platform();
-        if (platform === 'win32') return 'windows';
-        if (platform === 'darwin') return 'macos';
-        return 'linux';
+        // Always return macos
+        return 'macos';
     }
     
     log(message, type = 'info') {
@@ -522,11 +520,8 @@ class OfflineInstaller {
             throw new Error(\`Installation script not found: \${scriptPath}\`);
         }
         
-        if (this.platform === 'windows') {
-            execSync(\`powershell -ExecutionPolicy Bypass -File "\${scriptPath}"\`, { stdio: 'inherit' });
-        } else {
-            execSync(\`bash "\${scriptPath}"\`, { stdio: 'inherit' });
-        }
+        // Use bash for macOS
+        execSync(\`bash "\${scriptPath}"\`, { stdio: 'inherit' });
         
         this.log('✅ Ollama runtime installed', 'success');
     }

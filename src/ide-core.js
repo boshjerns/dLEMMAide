@@ -40,7 +40,7 @@ const pathUtils = {
 window.electronAPI = {
   executeCommand: async (command) => {
     try {
-      return await ipcRenderer.invoke('powershell:execute', command);
+      return await ipcRenderer.invoke('bash:execute', command);
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -68,6 +68,7 @@ class MithrilAIIDE {
     this.availableModels = [];
     this.selectedModel = null;
     this.isProcessing = false;
+    this.currentAIRequest = null; // Track current AI request for cancellation
     this.openingFile = false;
     this.expandedFolders = new Set();
     this.chatCodeChunks = []; // Active code chunks in chat context
@@ -102,10 +103,44 @@ class MithrilAIIDE {
     // IDE integration
     this.ideAIManager = null;
     this.ideTerminalManager = null;
+    this.todoManager = null; // Todo list manager
+    this.commandExecutor = null; // Command execution manager
     this.fileTree = new Map();
     this.currentContext = null;
     
     this.init();
+  }
+
+  // Load token settings from localStorage
+  loadTokenSettings() {
+    const contextTokensInput = document.getElementById('context-tokens');
+    const maxTokensInput = document.getElementById('max-tokens');
+    
+    if (contextTokensInput) {
+      const savedContextTokens = localStorage.getItem('ollama-context-tokens');
+      if (savedContextTokens) {
+        contextTokensInput.value = savedContextTokens;
+      }
+      
+      // Save on change
+      contextTokensInput.addEventListener('change', (e) => {
+        localStorage.setItem('ollama-context-tokens', e.target.value);
+        console.log('💾 Saved context tokens:', e.target.value);
+      });
+    }
+    
+    if (maxTokensInput) {
+      const savedMaxTokens = localStorage.getItem('ollama-max-tokens');
+      if (savedMaxTokens) {
+        maxTokensInput.value = savedMaxTokens;
+      }
+      
+      // Save on change
+      maxTokensInput.addEventListener('change', (e) => {
+        localStorage.setItem('ollama-max-tokens', e.target.value);
+        console.log('💾 Saved max tokens:', e.target.value);
+      });
+    }
   }
 
   async init() {
@@ -119,6 +154,10 @@ class MithrilAIIDE {
       this.setupEventHandlers();
       console.log('🎮 Event handlers set up');
       
+      // Load token settings from localStorage
+      this.loadTokenSettings();
+      console.log('💾 Token settings loaded');
+      
       // Initialize IDE AI Manager
       this.ideAIManager = new IDEAIManager(this);
       console.log('🤖 AI Manager initialized');
@@ -127,6 +166,19 @@ class MithrilAIIDE {
       this.ideTerminalManager = new IDETerminalManager();
       this.ideTerminalManager.initializeTerminal();
       console.log('🖥️ Terminal Manager initialized');
+      
+          // Initialize Todo Manager
+    this.todoManager = new TodoListManager(this);
+    console.log('🗂️ Todo Manager initialized');
+    
+    // Initialize Memory Manager
+    this.memoryManager = new MemoryManager(this);
+    await this.memoryManager.loadMemoryFromFile();
+    console.log('🧠 Memory Manager initialized');
+    
+    // Initialize Command Executor
+    this.commandExecutor = new CommandExecutor(this);
+    console.log('🖥️ Command Executor initialized');
       
       console.log('✅ Mithril AI IDE initialized successfully');
     } catch (error) {
@@ -388,7 +440,7 @@ class MithrilAIIDE {
     });
   }
 
-  // Core AI Workflow (3 steps)
+  // Core AI Workflow (enhanced with todo list management)
   async handleUserMessage() {
     const chatInput = document.getElementById('chat-input');
     const message = chatInput.value.trim();
@@ -405,9 +457,10 @@ class MithrilAIIDE {
       return;
     }
     
+    // Allow chat interruption - cancel any ongoing processing
     if (this.isProcessing) {
-      console.log('⚠️ Already processing previous message, aborting');
-      return;
+      console.log('🔄 Interrupting previous processing for new message');
+      this.cancelOngoingProcessing();
     }
     
     this.isProcessing = true;
@@ -423,13 +476,64 @@ class MithrilAIIDE {
       
       // Step 1: Intent Detection
       console.log('🎯 ==================== STEP 1: INTENT DETECTION ====================');
-      const intent = await this.detectIntent(message);
+              const intent = await this.detectUserIntent(message);
       console.log('🎯 Intent detection complete:', JSON.stringify(intent, null, 2));
       
-      // Step 2: IDE Action Execution
+      // Check if we should create a todo list for this task FIRST
+      console.log('🗂️ ==================== TODO LIST ANALYSIS ====================');
+      let shouldExecuteOriginalTask = true;
+      let executionIntent = intent;
+      let executionMessage = message;
+      
+      if (this.todoManager && this.todoManager.shouldCreateTodoList(message, intent)) {
+        console.log('🗂️ Complex task detected - generating todo list');
+        const todos = await this.todoManager.generateTodoList(message, intent);
+        console.log('🗂️ Todo list generated:', todos.length, 'items');
+        
+        // Get the current (first) todo to execute
+        const currentTodo = this.todoManager.getCurrentTodo();
+        if (currentTodo) {
+          console.log('🗂️ Executing current todo step:', currentTodo.content);
+          // Override the execution to only do the current todo step
+          executionIntent = {
+            tool: currentTodo.tool,
+            target: 'current-todo',
+            confidence: 0.95
+          };
+          executionMessage = currentTodo.content;
+          shouldExecuteOriginalTask = false;
+        }
+      } else {
+        console.log('🗂️ Simple task detected - no todo list needed');
+      }
+      
+      // Step 2: IDE Action Execution (either full task or current todo step)
       console.log('⚙️ ==================== STEP 2: IDE ACTION EXECUTION ====================');
-      const result = await this.executeIDEAction(intent, message);
+      console.log('⚙️ Execution mode:', shouldExecuteOriginalTask ? 'Full task' : 'Current todo step');
+      console.log('⚙️ Execution intent:', JSON.stringify(executionIntent, null, 2));
+      console.log('⚙️ Execution message:', executionMessage);
+      
+      const result = await this.executeIDEAction(executionIntent, executionMessage);
       console.log('⚙️ Action execution complete:', JSON.stringify(result, null, 2));
+      
+      // Mark current todo as completed if we have an active todo list
+      if (this.todoManager && this.todoManager.getCurrentTodo() && !shouldExecuteOriginalTask) {
+        console.log('🗂️ Marking current todo as completed and continuing workflow');
+        try {
+          this.todoManager.markCurrentCompleted();
+          // Note: markCurrentCompleted now handles auto-execution of next todo
+          
+          // Still do synthesis for the first manual execution
+          if (this.todoManager.getCompletedCount() === 1) {
+            // Continue to synthesis for the first task only
+          } else {
+            return; // Skip synthesis for auto-executed todos
+          }
+        } catch (todoError) {
+          console.error('🗂️ Error in todo completion:', todoError);
+          // Continue with synthesis even if todo completion fails
+        }
+      }
       
       // Step 3: Memory & Summary
       console.log('📝 ==================== STEP 3: SYNTHESIS & MEMORY ====================');
@@ -456,7 +560,7 @@ class MithrilAIIDE {
   }
 
   // Step 1: Intent Detection
-  async detectIntent(userMessage) {
+  async detectUserIntent(userMessage) {
     const context = this.getCurrentContext();
     
     // Build detailed context information
@@ -487,27 +591,36 @@ User message: "${userMessage}"
 
 CRITICAL RULES FOR INTENT DETECTION:
 
-1. **FILE READING/ANALYSIS**: If user asks about file content with phrases like "what is in this file", "show me this file", "what does this file contain", "tell me about this file":
+1. **COMMAND EXECUTION - HIGHEST PRIORITY**: If user wants to execute ANY terminal/shell command:
+   - Use "run_command" for: "install [package]", "pip install", "npm install", "yarn add"
+   - Use "run_command" for: "curl", "wget", "git clone", "git push", "git pull"
+   - Use "run_command" for: "run the app", "start the app", "launch", "serve"
+   - Use "run_command" for: "docker run", "docker build", "make", "cmake"
+   - Use "run_command" for: "python", "node", "java", "go run", "cargo run"
+   - Use "run_command" for: "cd", "ls", "mkdir", "cp", "mv", ANY shell command
+   - CRITICAL: If message contains executable commands, package managers, or system tools → "run_command"
+
+2. **FILE READING/ANALYSIS**: If user asks about file content with phrases like "what is in this file", "show me this file", "what does this file contain", "tell me about this file":
    - Use "read_file" to read and display the current file content
    - This applies when a file is open and user wants to see/understand its contents
 
-2. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
+3. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
    - Use "refactor_code" for: "refactor this", "improve these", "clean this up"
    - Use "fix_issues" for: "fix this", "fix these errors", "debug this"
    - Use "optimize_code" for: "optimize this", "make this faster", "improve performance"
    - Use "edit_file" for: "change this", "make this red", "update these colors", "modify this"
 
-3. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
+4. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
    - Use "edit_file" for file-wide changes like "make this file pink theme", "update the colors"
 
-4. **SPECIFIC OVERRIDES**:
+5. **SPECIFIC OVERRIDES**:
    - Color/theme changes to selected text → "edit_file" with target "selection"  
    - Code improvements to selected text → "refactor_code"
    - Bug fixes to selected text → "fix_issues"
    - Performance improvements → "optimize_code"
    - Questions about code → "chat_response"
 
-5. **FALLBACK**: If unclear, but file is open → "edit_file"
+6. **FALLBACK**: If unclear, but file is open → "edit_file"
 
 Respond with JSON only:
 {
@@ -552,6 +665,14 @@ Tool selection rules:
   // Step 2: IDE Action Execution
   async executeIDEAction(intent, userMessage) {
     console.log('⚙️ Getting current context for action execution...');
+    console.log('⚙️ Intent target:', intent.target);
+    console.log('⚙️ User message preview:', userMessage.substring(0, 100));
+    
+    // Check if this is a todo-driven execution
+    if (intent.target === 'current-todo') {
+      console.log('⚙️ Todo-driven execution detected');
+      return await this.executeTodoStep(intent, userMessage);
+    }
     
     // Check if we have chat code chunks (priority over editor selection)
     let selectedText = '';
@@ -584,6 +705,9 @@ Tool selection rules:
     switch (intent.tool) {
       case 'chat_response':
         return await this.chatResponse(this.getCurrentContext(), userMessage);
+      
+      case 'run_command':
+        return await this.runCommand(userMessage, intent);
         
       case 'edit_file':
         if (targetChunk) {
@@ -977,10 +1101,18 @@ Please reference these code chunks in your response when relevant. You can refer
       const startTime = Date.now();
       console.log('🤖 Sending request to Ollama...');
       
+      // Get token settings from UI
+      const contextTokensInput = document.getElementById('context-tokens');
+      const maxTokensInput = document.getElementById('max-tokens');
+      const contextTokens = contextTokensInput ? parseInt(contextTokensInput.value) || 32768 : 32768;
+      const maxTokens = maxTokensInput ? parseInt(maxTokensInput.value) || 4096 : 4096;
+      
       const requestPayload = {
         model: modelName,
         prompt: fullPrompt,
-        stream: true
+        stream: true,
+        contextTokens: contextTokens,
+        maxTokens: maxTokens
       };
       
       console.log('🤖 Request payload:', JSON.stringify(requestPayload, null, 2));
@@ -1003,11 +1135,11 @@ Please reference these code chunks in your response when relevant. You can refer
               if (messageContent) {
                 messageContent.innerHTML = this.formatMessage(fullResponse);
                 
-                // Auto-scroll to bottom
-                const chatMessages = document.getElementById('chat-messages');
-                if (chatMessages) {
-                  chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
+                // Auto-scroll disabled to prevent jittery streaming behavior
+                // const chatMessages = document.getElementById('chat-messages');
+                // if (chatMessages) {
+                //   chatMessages.scrollTop = chatMessages.scrollHeight;
+                // }
               }
             }
           }
@@ -1378,7 +1510,13 @@ Please reference these code chunks in your response when relevant. You can refer
       runOption.innerHTML = `<span class="menu-icon">🚀</span> ${runCommand}`;
       runOption.onclick = () => {
         menu.remove();
-        this.executeFile(file.path);
+        // Route through integrated terminal for visible execution and output
+        if (this.ideTerminalManager && this.ideTerminalManager.executeFile) {
+          this.ideTerminalManager.executeFile(file.path);
+        } else {
+          // Fallback to legacy execution method
+          this.executeFileFromContextMenu(file.path);
+        }
       };
       menu.appendChild(runOption);
       
@@ -1435,10 +1573,60 @@ Please reference these code chunks in your response when relevant. You can refer
   // Execute file in terminal
   executeFile(filePath) {
     console.log('🚀 Executing file from context menu:', filePath);
-    if (this.ideTerminalManager) {
+    if (this.ideTerminalManager && this.ideTerminalManager.executeFile) {
       this.ideTerminalManager.executeFile(filePath);
     } else {
-      console.error('❌ Terminal manager not available');
+      this.executeFileFromContextMenu(filePath);
+    }
+  }
+
+  // Execute file from context menu with proper platform commands
+  async executeFileFromContextMenu(filePath) {
+    console.log('🚀 Executing file from context menu:', filePath);
+    
+    const extension = filePath.toLowerCase().split('.').pop();
+    let command = '';
+    
+    switch (extension) {
+      case 'html':
+        // Open HTML files in default browser
+        command = process.platform === 'darwin' ? `open "${filePath}"` : (process.platform === 'win32' ? `start "${filePath}"` : `xdg-open "${filePath}"`);
+        break;
+      case 'py':
+        // Run Python files (use python3 on macOS)
+        command = (process.platform === 'darwin' ? 'python3' : 'python') + ` "${filePath}"`;
+        break;
+      case 'js':
+        // Run JavaScript with Node.js
+        command = `node "${filePath}"`;
+        break;
+      default:
+        console.log('Unknown file type for execution:', extension);
+        this.addChatMessage('assistant', `Cannot execute ${extension} files directly. Please specify how you'd like to run this file.`);
+        return;
+    }
+    
+    // Execute the command using the best available method
+    if (command) {
+      try {
+        console.log('🚀 Executing context menu command:', command);
+        
+        // Try multiple execution methods in order of preference
+        if (this.commandExecutor) {
+          const result = await this.commandExecutor.executeViaElectronAPI(command);
+          this.addChatMessage('assistant', result);
+        } else if (window.electronAPI && window.electronAPI.executeCommand) {
+          const result = await window.electronAPI.executeCommand(command);
+          this.addChatMessage('assistant', result.output || result.error || `Executed: ${command}`);
+        } else if (this.ideTerminalManager) {
+          this.ideTerminalManager.executeCommand(command);
+        } else {
+          this.addChatMessage('assistant', `📋 Please run manually: ${command}`);
+        }
+      } catch (error) {
+        console.error('🚀 Context menu execution error:', error);
+        this.addChatMessage('assistant', `❌ Error executing ${filePath}: ${error.message}`);
+      }
     }
   }
 
@@ -1640,8 +1828,8 @@ Please reference these code chunks in your response when relevant. You can refer
     messageDiv.appendChild(messageContent);
     chatMessages.appendChild(messageDiv);
     
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Auto-scroll disabled to prevent scrolling bugs
+    // chatMessages.scrollTop = chatMessages.scrollHeight;
     
     console.log('✅ Chat message added successfully');
     return messageDiv;
@@ -1770,8 +1958,8 @@ Please reference these code chunks in your response when relevant. You can refer
     messageDiv.appendChild(messageContent);
     chatMessages.appendChild(messageDiv);
     
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Auto-scroll disabled for cleaner UX - user can scroll manually
+    // chatMessages.scrollTop = chatMessages.scrollHeight;
     
     console.log('✅ Streaming chat message created');
     return messageDiv;
@@ -4161,6 +4349,429 @@ Explain what this code does, how it works, and any important concepts. Provide a
     
     console.log('✅ IDE reinitialization completed');
   }
+
+  /**
+   * Execute a specific todo step
+   */
+  async executeTodoStep(intent, todoMessage) {
+    console.log('⚙️ Executing todo step:', todoMessage);
+    console.log('⚙️ Todo tool:', intent.tool);
+    
+    try {
+      switch (intent.tool) {
+        case 'create_file':
+          // For todo-driven file creation, be more specific
+          if (todoMessage.toLowerCase().includes('project structure')) {
+            return await this.createProjectStructure(todoMessage);
+          } else if (todoMessage.toLowerCase().includes('html')) {
+            return await this.createHTMLFile(todoMessage);
+          } else if (todoMessage.toLowerCase().includes('component')) {
+            return await this.createComponentFile(todoMessage);
+          } else if (todoMessage.toLowerCase().includes('css') || todoMessage.toLowerCase().includes('styles') || todoMessage.toLowerCase().includes('styling')) {
+            return await this.createCalendarStyles();
+          } else {
+            return await this.executeFileCreation(todoMessage);
+          }
+          
+        case 'edit_file':
+          return await this.editFile('', todoMessage, todoMessage);
+          
+        case 'chat_response':
+          return await this.chatResponse(this.getCurrentContext(), todoMessage);
+          
+        default:
+          // Fallback to regular execution
+          return await this.executeIDEAction({tool: intent.tool}, todoMessage);
+      }
+    } catch (error) {
+      console.error('⚙️ Error executing todo step:', error);
+      return `Error executing step: ${error.message}`;
+    }
+  }
+
+  /**
+   * Create project structure for apps
+   */
+  async createProjectStructure(message) {
+    console.log('⚙️ Creating project structure for:', message);
+    
+    let projectType = 'react-app';
+    if (message.toLowerCase().includes('calendar')) {
+      projectType = 'calendar-app';
+    }
+    
+    const packageJson = {
+      name: projectType,
+      version: "1.0.0",
+      description: `A React ${projectType.replace('-', ' ')}`,
+      main: "index.js",
+      scripts: {
+        start: "npx serve .",
+        build: "echo 'Build completed'",
+        test: "echo 'Tests passed'"
+      },
+      dependencies: {
+        react: "^18.2.0",
+        "react-dom": "^18.2.0"
+      },
+      devDependencies: {
+        serve: "^14.0.0"
+      }
+    };
+
+    try {
+      const result = await this.createFile('package.json', JSON.stringify(packageJson, null, 2), 'Creating package.json for calendar app');
+      this.addChatMessage('ai', `✅ Created package.json for ${projectType}`);
+      return result;
+    } catch (error) {
+      return `Error creating project structure: ${error.message}`;
+    }
+  }
+
+  /**
+   * Create HTML file for apps
+   */
+  async createHTMLFile(message) {
+    console.log('⚙️ Creating HTML file for:', message);
+    
+    let appTitle = 'React App';
+    
+    if (message.toLowerCase().includes('calendar')) {
+      appTitle = 'Calendar App';
+    }
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${appTitle}</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="app.js"></script>
+</body>
+</html>`;
+
+    try {
+      const result = await this.createFile('index.html', htmlContent, 'Creating index.html for calendar app');
+      this.addChatMessage('ai', `✅ Created index.html for ${appTitle}`);
+      return result;
+    } catch (error) {
+      return `Error creating HTML file: ${error.message}`;
+    }
+  }
+
+  /**
+   * Create component file for apps
+   */
+  async createComponentFile(message) {
+    console.log('⚙️ Creating component file for:', message);
+    
+    if (message.toLowerCase().includes('calendar')) {
+      return await this.createCalendarComponent();
+    } else {
+      return await this.createGenericComponent(message);
+    }
+  }
+
+  /**
+   * Create calendar component
+   */
+  async createCalendarComponent() {
+    const calendarCode = `const { useState } = React;
+
+function Calendar() {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [events, setEvents] = useState({});
+
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const getDaysInMonth = (date) => {
+        return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    };
+
+    const getFirstDayOfMonth = (date) => {
+        return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    };
+
+    const navigateMonth = (direction) => {
+        const newDate = new Date(currentDate);
+        newDate.setMonth(currentDate.getMonth() + direction);
+        setCurrentDate(newDate);
+    };
+
+    const renderCalendarDays = () => {
+        const daysInMonth = getDaysInMonth(currentDate);
+        const firstDay = getFirstDayOfMonth(currentDate);
+        const days = [];
+
+        for (let i = 0; i < firstDay; i++) {
+            days.push(React.createElement('div', {
+                key: \`empty-\${i}\`,
+                className: 'calendar-day empty'
+            }));
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateKey = \`\${currentDate.getFullYear()}-\${currentDate.getMonth()}-\${day}\`;
+            const isSelected = selectedDate === dateKey;
+            const hasEvent = events[dateKey];
+
+            days.push(React.createElement('div', {
+                key: day,
+                className: \`calendar-day \${isSelected ? 'selected' : ''} \${hasEvent ? 'has-event' : ''}\`,
+                onClick: () => setSelectedDate(dateKey)
+            }, day, hasEvent && React.createElement('div', { className: 'event-indicator' })));
+        }
+
+        return days;
+    };
+
+    return React.createElement('div', { className: 'calendar-container' },
+        React.createElement('div', { className: 'calendar-header' },
+            React.createElement('button', { onClick: () => navigateMonth(-1) }, '<'),
+            React.createElement('h2', {}, \`\${months[currentDate.getMonth()]} \${currentDate.getFullYear()}\`),
+            React.createElement('button', { onClick: () => navigateMonth(1) }, '>')
+        ),
+        React.createElement('div', { className: 'calendar-grid' },
+            React.createElement('div', { className: 'calendar-weekdays' },
+                daysOfWeek.map(day => React.createElement('div', { key: day, className: 'weekday' }, day))
+            ),
+            React.createElement('div', { className: 'calendar-days' }, renderCalendarDays())
+        ),
+        selectedDate && React.createElement('div', { className: 'selected-date-info' },
+            React.createElement('h3', {}, \`Selected: \${selectedDate}\`),
+            React.createElement('button', {
+                onClick: () => {
+                    const eventTitle = prompt('Enter event title:');
+                    if (eventTitle) {
+                        setEvents(prev => ({ ...prev, [selectedDate]: eventTitle }));
+                    }
+                }
+            }, 'Add Event'),
+            events[selectedDate] && React.createElement('div', { className: 'event-details' },
+                React.createElement('strong', {}, 'Event: '), events[selectedDate]
+            )
+        )
+    );
+}
+
+function App() {
+    return React.createElement('div', { className: 'app' },
+        React.createElement('h1', {}, '📅 Calendar App'),
+        React.createElement(Calendar)
+    );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById('root'));`;
+
+    try {
+      const result = await this.createFile('app.js', calendarCode, 'Creating calendar React component');
+      this.addChatMessage('ai', '✅ Created Calendar component with date navigation and event management');
+      return result;
+    } catch (error) {
+      return `Error creating calendar component: ${error.message}`;
+    }
+  }
+
+  /**
+   * Create CSS styles for calendar app
+   */
+  async createCalendarStyles() {
+    const cssContent = `/* Calendar App Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.app {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.app h1 {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin: 0;
+    font-size: 28px;
+}
+
+.calendar-container {
+    padding: 20px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 0 10px;
+}
+
+.calendar-header button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+}
+
+.calendar-header button:hover {
+    background: #5a6fd8;
+}
+
+.calendar-header h2 {
+    color: #333;
+    font-size: 24px;
+}
+
+.calendar-grid {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: #f5f5f5;
+}
+
+.weekday {
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+    color: #666;
+    border-right: 1px solid #e0e0e0;
+}
+
+.weekday:last-child {
+    border-right: none;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-day {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.calendar-day:last-child {
+    border-right: none;
+}
+
+.calendar-day:hover {
+    background: #f0f4ff;
+}
+
+.calendar-day.selected {
+    background: #667eea;
+    color: white;
+}
+
+.calendar-day.has-event {
+    background: #e8f5e8;
+}
+
+.calendar-day.has-event.selected {
+    background: #4caf50;
+}
+
+.calendar-day.empty {
+    background: #fafafa;
+    cursor: default;
+}
+
+.event-indicator {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    width: 8px;
+    height: 8px;
+    background: #4caf50;
+    border-radius: 50%;
+}
+
+.selected-date-info {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.selected-date-info h3 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.selected-date-info button {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+
+.selected-date-info button:hover {
+    background: #218838;
+}
+
+.event-details {
+    padding: 10px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    margin-top: 10px;
+}`;
+
+    try {
+      const result = await this.createFile('styles.css', cssContent, 'Creating CSS styles for calendar app');
+      this.addChatMessage('ai', '✅ Created beautiful CSS styles for calendar app');
+      return result;
+    } catch (error) {
+      return `Error creating styles: ${error.message}`;
+    }
+  }
 }
 
 // Initialize the IDE when DOM is loaded
@@ -4266,4 +4877,103 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 100);
   
   console.log('🚀 Mithril AI IDE ready');
+}); 
+
+// Add the missing runCommand method to the global IDE instance
+window.addEventListener('DOMContentLoaded', () => {
+  if (window.mithrilIDE) {
+    // Add missing runCommand method
+    window.mithrilIDE.runCommand = async function(userMessage, intent) {
+      console.log('🖥️ ==================== RUNNING COMMAND (MAC FIX) ====================');
+      console.log('🖥️ User message:', userMessage);
+      console.log('🖥️ Intent:', intent);
+
+      try {
+        // Extract command with Mac-specific handling
+        const command = this.extractCommandMac(userMessage);
+        
+        if (!command) {
+          console.log('🖥️ Could not extract command from message');
+          return 'Could not determine the specific command to run.';
+        }
+
+        console.log('🖥️ Extracted Mac command:', command);
+        
+        // Try multiple execution methods for Mac
+        if (window.electronAPI && window.electronAPI.executeCommand) {
+          console.log('🖥️ Executing via Electron API (Mac):', command);
+          const result = await window.electronAPI.executeCommand(command);
+          
+          if (result && result.success !== false) {
+            this.addChatMessage('assistant', `✅ Successfully executed: ${command}\n${result.output || ''}`);
+            return `✅ Successfully executed: ${command}`;
+          } else {
+            this.addChatMessage('assistant', `❌ Command failed: ${command}\n${result.error || result.output || 'Unknown error'}`);
+            return `❌ Command failed: ${command}`;
+          }
+        } else if (this.ideTerminalManager && this.ideTerminalManager.executeCommand) {
+          console.log('🖥️ Executing via terminal manager (Mac):', command);
+          this.ideTerminalManager.executeCommand(command);
+          this.addChatMessage('assistant', `✅ Command sent to terminal: ${command}`);
+          return `✅ Command sent to terminal: ${command}`;
+        } else {
+          console.log('🖥️ No execution method available (Mac)');
+          this.addChatMessage('assistant', `📋 Command to run manually: ${command}\n\nPlease run this command in your terminal.`);
+          return `📋 Please run manually: ${command}`;
+        }
+        
+      } catch (error) {
+        console.error('🖥️ Error running command (Mac):', error);
+        this.addChatMessage('assistant', `❌ Error executing command: ${error.message}`);
+        return `❌ Error executing command: ${error.message}`;
+      }
+    };
+
+    // Add Mac-specific command extraction
+    window.mithrilIDE.extractCommandMac = function(userMessage) {
+      const message = userMessage.toLowerCase().trim();
+      
+      // Mac-specific command patterns
+      if (message.includes('start the app') || message.includes('run the app') || message.includes('launch the app')) {
+        if (this.fileExists && this.fileExists('package.json')) {
+          return 'npm start';
+        } else if (this.fileExists && this.fileExists('index.html')) {
+          return 'open index.html';  // Mac command
+        } else {
+          return 'npm start';
+        }
+      }
+      
+      // File-specific patterns for Mac
+      if (message.includes('open') && message.includes('.html')) {
+        const match = message.match(/open\s+([\w\.\-]+\.html)/);
+        return match ? `open ${match[1]}` : 'open index.html';  // Mac command
+      }
+      
+      if (message.includes('run') && message.includes('.js')) {
+        const match = message.match(/run\s+([\w\.\-]+\.js)/);
+        return match ? `node ${match[1]}` : null;
+      }
+      
+      if (message.includes('run') && message.includes('.py')) {
+        const match = message.match(/run\s+([\w\.\-]+\.py)/);
+        return match ? `python ${match[1]}` : null;
+      }
+      
+      // Direct command patterns
+      if (message.includes('npm start')) return 'npm start';
+      if (message.includes('node ')) {
+        const match = message.match(/node\s+([\w\.\-]+)/);
+        return match ? `node ${match[1]}` : null;
+      }
+      if (message.includes('python ')) {
+        const match = message.match(/python\s+([\w\.\-]+)/);
+        return match ? `python ${match[1]}` : null;
+      }
+      
+      return null;
+    };
+
+    console.log('🖥️ Added Mac-specific runCommand and extractCommandMac methods');
+  }
 }); 

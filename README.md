@@ -1,6 +1,6 @@
-# 🚀 Mithril AI IDE v2.0
+# 🚀 Mithril AI IDE v2.0 (macOS Edition)
 
-**Revolutionary AI-First Code Editor** - A complete transformation from chat-based to IDE-native AI interaction.
+**Revolutionary AI-First Code Editor for macOS** - A complete transformation from chat-based to IDE-native AI interaction, optimized for Apple Silicon and Intel Macs.
 
 ## ✨ What's New in V2.0
 
@@ -114,23 +114,42 @@ mithril-ide-v2/
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- **Node.js** (v16+)
-- **Electron** 
-- **Ollama** running locally with models
+### Prerequisites (macOS)
+- **macOS 10.14+** (Mojave or later)
+- **Node.js** (v16+) - Will be bundled if not available
+- **Ollama** - Will be automatically installed via Homebrew or manual download
 
 ### Installation
 ```bash
-cd mithril-ide-v2
+cd MITHRILMACv1
 npm install
 npm start
 ```
 
+### Building for macOS
+```bash
+# For Intel Macs
+npm run pack-mac
+
+# For Apple Silicon Macs  
+npm run pack-mac-arm
+
+# For distribution (creates DMG)
+npm run build:mac
+```
+
 ### First Launch
-1. **Open a folder** - Click "Open Folder" to set your workspace
-2. **Select code** - Highlight any code and see AI context hints
-3. **Chat with AI** - Ask questions about your code
-4. **Watch magic happen** - AI edits code directly in your IDE
+1. **Setup wizard** - Follow the automated Ollama and model installation
+2. **Open a folder** - Click "Open Folder" to set your workspace  
+3. **Select code** - Highlight any code and see AI context hints
+4. **Chat with AI** - Ask questions about your code
+5. **Watch magic happen** - AI edits code directly in your IDE
+
+### macOS-Specific Features
+- **Homebrew integration** - Automatically installs Ollama via brew
+- **Native shell support** - Uses zsh/bash instead of PowerShell
+- **macOS paths** - Follows Apple's directory conventions (~/.ollama)
+- **App bundle support** - Proper .app structure with .icns icon
 
 ## 🎯 AI Tools Available
 
@@ -219,7 +238,7 @@ Mithril AI IDE now includes a comprehensive setup system for air-gapped environm
 - **🔍 Ollama Verification**: Automatically detects and verifies Ollama installation
 - **⚙️ Portable Node.js Support**: Bundles Node.js for systems without internet access  
 - **📦 Model Management**: Copies pre-packaged AI models to user directory
-- **🌍 Cross-Platform**: Works on Windows, macOS, and Linux
+- **🍎 macOS Native**: Optimized for macOS with Homebrew and native shell support
 - **🔒 Air-Gapped Safe**: No internet connection required for setup
 
 ### Usage

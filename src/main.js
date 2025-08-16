@@ -9,8 +9,9 @@ const fs = require('fs').promises;
 const { spawn } = require('child_process');
 const os = require('os');
 
-// Import bundled Node.js manager
+// Import bundled Node.js manager and platform utilities
 const bundledNodeJS = require('./bundled-nodejs');
+const platformUtils = require('./platform-utils');
 
 let mainWindow;
 let setupWindow;
@@ -288,9 +289,20 @@ async function copyModelsRecursively(source, target) {
 
 function executeCommand(command, args = []) {
   return new Promise((resolve) => {
+    // Augment PATH on macOS so GUI-launched app can find python3/node/brew
+    const env = { ...process.env };
+    if (process.platform === 'darwin') {
+      const defaultPaths = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+      const currentPath = env.PATH || '';
+      const parts = new Set(currentPath.split(':').filter(Boolean));
+      defaultPaths.forEach(p => parts.add(p));
+      env.PATH = Array.from(parts).join(':');
+    }
+
     const child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true
+      shell: true,
+      env
     });
 
     let stdout = '';
@@ -421,7 +433,9 @@ ipcMain.handle('ollama:generate', async (event, options) => {
         options: {
           temperature: 0.7,
           top_p: 0.9,
-          top_k: 40
+          top_k: 40,
+          num_ctx: options.contextTokens || 32768,
+          num_predict: options.maxTokens || 4096
         }
       })
     });
@@ -456,7 +470,9 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
         options: {
           temperature: 0.7,
           top_p: 0.9,
-          top_k: 40
+          top_k: 40,
+          num_ctx: options.contextTokens || 32768,
+          num_predict: options.maxTokens || 4096
         }
       })
     });
@@ -507,9 +523,9 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
   }
 });
 
-// PowerShell Integration
-ipcMain.handle('powershell:execute', async (event, command) => {
-  return executeCommand('powershell.exe', ['-Command', command]);
+// Bash Integration for macOS
+ipcMain.handle('bash:execute', async (event, command) => {
+  return await platformUtils.runCommand(command, { shell: 'bash' });
 });
 
 // App Event Handlers

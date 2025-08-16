@@ -143,18 +143,18 @@ class CLIToolsManager {
       system: {
         name: 'System',
         environment: 'system',
-        shell: 'powershell',
+        shell: 'bash',
         commands: {
           'create-folder': {
             pattern: /create\s+(?:folder|directory)|make\s+(?:folder|directory)|mkdir/i,
-            template: "New-Item -ItemType Directory -Path '{folderName}'",
+            template: "mkdir -p '{folderName}'",
             description: 'Create a new folder',
             requiresFolderName: true,
             category: 'file-system',
           },
           'list-files': {
             pattern: /list\s+files|show\s+files|dir|ls/i,
-            template: 'Get-ChildItem',
+            template: 'ls -la',
             description: 'List files and directories',
             category: 'file-system',
           },

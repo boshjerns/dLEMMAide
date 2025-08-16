@@ -24,10 +24,17 @@ class IDETerminalManager {
     // File type command mappings
     this.commandMappings = {
       '.py': { 
-        command: 'python', 
+        command: process.platform === 'darwin' ? 'python3' : 'python', 
         args: (file) => [file],
         label: 'Run Python File',
-        icon: '🐍'
+        icon: '🐍',
+        // Provide helpful hint for missing modules
+        onError: (stderr) => {
+          if (/ModuleNotFoundError: No module named/.test(stderr)) {
+            this.appendOutput('\n💡 Tip: Create a virtualenv and install dependencies, e.g.:', 'stderr');
+            this.appendOutput('python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt', 'stderr');
+          }
+        }
       },
       '.js': { 
         command: 'node', 
@@ -63,8 +70,8 @@ class IDETerminalManager {
       '.cpp': { 
         command: 'g++', 
         args: (file) => {
-          const output = path.basename(file, '.cpp') + (os.platform() === 'win32' ? '.exe' : '');
-          return [file, '-o', output, '&&', output];
+          const output = path.basename(file, '.cpp');
+          return [file, '-o', output, '&&', `./${output}`];
         },
         shell: true,
         label: 'Compile & Run C++',
@@ -73,8 +80,8 @@ class IDETerminalManager {
       '.c': { 
         command: 'gcc', 
         args: (file) => {
-          const output = path.basename(file, '.c') + (os.platform() === 'win32' ? '.exe' : '');
-          return [file, '-o', output, '&&', output];
+          const output = path.basename(file, '.c');
+          return [file, '-o', output, '&&', `./${output}`];
         },
         shell: true,
         label: 'Compile & Run C',
@@ -111,6 +118,14 @@ class IDETerminalManager {
         label: 'Run Shell Script',
         icon: '🐚'
       },
+      '.html': {
+        // Open HTML in default browser; Safari by default on macOS
+        command: (file) => process.platform === 'darwin' ? `open -a "Safari" "${file}"` : (process.platform === 'win32' ? `cmd /c start "" "${file}"` : `xdg-open "${file}"`),
+        args: () => [],
+        shell: () => true,
+        label: 'Open HTML in Browser',
+        icon: '🌐'
+      },
       '.bat': { 
         command: 'cmd', 
         args: (file) => ['/c', file],
@@ -123,13 +138,7 @@ class IDETerminalManager {
         label: 'Run PowerShell Script',
         icon: '🔷'
       },
-      '.html': { 
-        command: 'start', 
-        args: (file) => [file],
-        label: 'Open in Browser',
-        icon: '🌐',
-        shell: true
-      }
+      
     };
     
     console.log('🖥️ Terminal Manager initialized');
@@ -388,6 +397,7 @@ class IDETerminalManager {
     // Set working directory
     this.workingDirectory = fileDir;
     
+    this.lastExecutedFile = filePath;
     this.appendOutput(`\n${mapping.icon} Executing: ${fileName}`);
     this.appendOutput(`📁 Working directory: ${fileDir}`);
     
@@ -407,16 +417,17 @@ class IDETerminalManager {
 
   // Run the actual file command
   runFileCommand(filePath, mapping) {
-    const args = mapping.args(filePath);
-    const command = mapping.command;
+    const command = typeof mapping.command === 'function' ? mapping.command(filePath) : mapping.command;
+    const args = typeof mapping.args === 'function' ? mapping.args(filePath) : (mapping.args || []);
     const cwd = mapping.cwd ? mapping.cwd(filePath) : this.workingDirectory;
+    const shellFlag = typeof mapping.shell === 'function' ? mapping.shell(filePath) : (mapping.shell || false);
     
-    this.appendOutput(`⚡ Running: ${command} ${args.join(' ')}`);
+    this.appendOutput(`⚡ Running: ${command} ${Array.isArray(args) ? args.join(' ') : ''}`);
     this.appendOutput('─'.repeat(50));
     
     this.runCommand(command, args, {
       cwd: cwd,
-      shell: mapping.shell || false
+      shell: shellFlag
     });
   }
 
@@ -449,10 +460,21 @@ class IDETerminalManager {
     const startTime = Date.now();
     
     try {
+      // Ensure interactive shell PATH for macOS GUI apps (PATH may be minimal)
+      const env = { ...process.env };
+      if (process.platform === 'darwin') {
+        const defaultPaths = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+        const currentPath = env.PATH || '';
+        const parts = new Set(currentPath.split(':').filter(Boolean));
+        defaultPaths.forEach(p => parts.add(p));
+        env.PATH = Array.from(parts).join(':');
+      }
+
       this.currentProcess = spawn(command, args, {
         cwd: options.cwd || this.workingDirectory || process.cwd(),
         shell: options.shell || false,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env
       });
 
       // Handle stdout
@@ -462,7 +484,16 @@ class IDETerminalManager {
 
       // Handle stderr
       this.currentProcess.stderr.on('data', (data) => {
-        this.appendOutput(data.toString(), 'stderr');
+        const text = data.toString();
+        this.appendOutput(text, 'stderr');
+        // Hook file-type specific error helpers
+        try {
+          const ext = path.extname(this.lastExecutedFile || '') || '';
+          const mapping = this.commandMappings[ext];
+          if (mapping && typeof mapping.onError === 'function') {
+            mapping.onError(text);
+          }
+        } catch {}
       });
 
       // Handle process exit

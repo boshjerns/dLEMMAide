@@ -12,7 +12,8 @@
     "build:linux": "electron-builder --linux",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "pack-simple": "electron-packager . \"Mithril AI Assistant\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=logoM.ico",
+    "pack-mac": "electron-packager . \"Mithril AI Assistant\" --platform=darwin --arch=x64 --out=dist --overwrite --icon=logoM.icns",
+    "pack-mac-arm": "electron-packager . \"Mithril AI Assistant\" --platform=darwin --arch=arm64 --out=dist --overwrite --icon=logoM.icns",
     "setup-nodejs": "node scripts/setup-bundled-nodejs.js",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -29,7 +30,8 @@
   "dependencies": {
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",
-    "axios": "^1.7.2",
+    "axios": "^1.11.0",
+    "bootstrap": "^5.3.7",
     "chokidar": "^3.6.0",
     "csslint": "^1.0.5",
     "eslint": "^9.31.0",
@@ -60,7 +62,8 @@
       "nodejs-bundle/**/*",
       "package.json",
       "logoM.ico",
-      "logoM.png"
+      "logoM.png",
+      "logoM.icns"
     ],
     "win": {
       "target": "portable",
@@ -79,9 +82,16 @@
       "shortcutName": "Mithril AI Assistant"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "logoM.png",
-      "category": "public.app-category.productivity"
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "logoM.icns",
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-mac.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": null
     },
     "linux": {
       "target": "AppImage",

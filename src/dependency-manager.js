@@ -227,15 +227,13 @@ class DependencyManager {
     try {
       this.addLogEntry('🔍 Dynamically searching for Ollama...', 'info');
 
-      // Method 1: Try to find ollama command dynamically
-      this.addLogEntry('📍 Using PowerShell Get-Command to find ollama...', 'info');
-      const getCommandResult = await window.electronAPI.executeCommand(
-        'powershell -Command "Get-Command ollama -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path"'
-      );
+      // Method 1: Try to find ollama command using which
+      this.addLogEntry('📍 Using which command to find ollama...', 'info');
+      const whichResult = await window.electronAPI.executeCommand('which ollama');
 
-      if (getCommandResult.success && getCommandResult.output.trim()) {
-        const ollamaPath = getCommandResult.output.trim();
-        this.addLogEntry(`✅ Found via Get-Command: ${ollamaPath}`, 'success');
+      if (whichResult.success && whichResult.output.trim()) {
+        const ollamaPath = whichResult.output.trim();
+        this.addLogEntry(`✅ Found via which: ${ollamaPath}`, 'success');
 
         // Verify it works
         this.addLogEntry(`🔍 Testing version command: "${ollamaPath}" --version`, 'info');
@@ -246,7 +244,7 @@ class DependencyManager {
           return {
             found: true,
             location: ollamaPath,
-            method: 'Get-Command',
+            method: 'which',
             version: versionTest.output.trim(),
           };
         } else {
@@ -261,45 +259,60 @@ class DependencyManager {
           return {
             found: true,
             location: ollamaPath,
-            method: 'Get-Command (forced)',
+            method: 'which (forced)',
             version: 'Unknown',
           };
         }
       } else {
-        this.addLogEntry('❌ Get-Command did not find ollama', 'info');
+        this.addLogEntry('❌ which command did not find ollama', 'info');
       }
 
-      // Method 2: Dynamic system search for ollama.exe
-      this.addLogEntry('📍 Searching entire system for ollama.exe...', 'info');
-      const searchCommand =
-        'powershell -Command "Get-ChildItem -Path C:\\ -Filter *ollama*.exe -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match \'^ollama\\.exe$|^Ollama\\.exe$\' } | Select-Object -First 5 -ExpandProperty FullName"';
-      const searchResult = await window.electronAPI.executeCommand(searchCommand);
+      // Method 2: Check common installation locations for macOS
+      this.addLogEntry('📍 Checking common macOS installation locations...', 'info');
+      const commonPaths = [
+        '/usr/local/bin/ollama',
+        '/opt/homebrew/bin/ollama',
+        path.join(process.env.HOME, '.local/bin/ollama'),
+        path.join(process.env.HOME, 'bin/ollama'),
+        '/usr/bin/ollama'
+      ];
 
-      if (searchResult.success && searchResult.output.trim()) {
-        const foundPaths = searchResult.output
-          .trim()
-          .split('\n')
-          .filter(path => path.trim());
-        this.addLogEntry(`🎯 Found ${foundPaths.length} potential Ollama installation(s)`, 'info');
-
-        for (const foundPath of foundPaths) {
-          const cleanPath = foundPath.trim();
-          this.addLogEntry(`🔍 Testing: ${cleanPath}`, 'info');
-
+      for (const searchPath of commonPaths) {
+        this.addLogEntry(`🔍 Checking: ${searchPath}`, 'info');
+        
+        const existsResult = await window.electronAPI.executeCommand(`test -f "${searchPath}" && echo "exists"`);
+        if (existsResult.success && existsResult.output.includes('exists')) {
           // Test if this executable actually works
-          const versionTest = await window.electronAPI.executeCommand(`"${cleanPath}" --version`);
+          const versionTest = await window.electronAPI.executeCommand(`"${searchPath}" --version`);
           if (versionTest.success && versionTest.output.includes('ollama')) {
-            this.addLogEntry(`✅ Found working Ollama: ${cleanPath}`, 'success');
+            this.addLogEntry(`✅ Found working Ollama: ${searchPath}`, 'success');
             this.addLogEntry(`✅ Version: ${versionTest.output.trim()}`, 'success');
             return {
               found: true,
-              location: cleanPath,
-              method: 'Dynamic Search',
+              location: searchPath,
+              method: 'Common Locations',
               version: versionTest.output.trim(),
             };
           } else {
-            this.addLogEntry(`❌ Not working: ${cleanPath}`, 'warning');
+            this.addLogEntry(`❌ Not working: ${searchPath}`, 'warning');
           }
+        }
+      }
+
+      // Method 3: Try Homebrew list
+      this.addLogEntry('📍 Checking if installed via Homebrew...', 'info');
+      const brewResult = await window.electronAPI.executeCommand('brew list ollama');
+      if (brewResult.success) {
+        const brewPathResult = await window.electronAPI.executeCommand('brew --prefix ollama');
+        if (brewPathResult.success) {
+          const brewPath = path.join(brewPathResult.output.trim(), 'bin', 'ollama');
+          this.addLogEntry(`✅ Found via Homebrew: ${brewPath}`, 'success');
+          return {
+            found: true,
+            location: brewPath,
+            method: 'Homebrew',
+            version: 'Homebrew-managed',
+          };
         }
       }
 
@@ -588,11 +601,8 @@ class DependencyManager {
   }
 
   detectPlatform() {
-    if (typeof process !== 'undefined' && process.platform) {
-      if (process.platform === 'win32') return 'windows';
-      if (process.platform === 'darwin') return 'macos';
-      return 'linux';
-    }
+    // Always return macos for this build
+    return 'macos';
 
     // Fallback for browser environment
     const userAgent = navigator.userAgent;
@@ -625,35 +635,26 @@ class DependencyManager {
       // If app directory is still empty, try command line fallback
       if (!appDir) {
         this.addLogEntry('⚠️ Could not get app directory, trying working directory...', 'warning');
-        if (platform === 'windows') {
-          const pwdResult = await window.electronAPI?.executeCommand('echo %cd%');
-          appDir = pwdResult?.output?.trim() || '.';
-        } else {
-          const pwdResult = await window.electronAPI?.executeCommand('pwd');
-          appDir = pwdResult?.output?.trim() || '.';
-        }
+        const pwdResult = await window.electronAPI?.executeCommand('pwd');
+        appDir = pwdResult?.output?.trim() || '.';
         this.addLogEntry(`📁 Working directory fallback: "${appDir}"`, 'info');
       }
 
-      // Check for main installation script with proper Windows path
+      // Check for main installation script using path.join
+      const path = require('path');
       let mainScript;
       if (appDir === '.' || !appDir) {
         // Use relative paths
-        mainScript = platform === 'windows' ? '.\\bundled\\install.js' : './bundled/install.js';
+        mainScript = path.join('.', 'bundled', 'install.js');
       } else {
         // Use absolute paths
-        mainScript =
-          platform === 'windows'
-            ? `${appDir}\\bundled\\install.js`
-            : `${appDir}/bundled/install.js`;
+        mainScript = path.join(appDir, 'bundled', 'install.js');
       }
 
       this.addLogEntry(`🔍 Looking for main script: ${mainScript}`, 'info');
 
       const mainScriptResult = await window.electronAPI?.executeCommand(
-        platform === 'windows'
-          ? `if exist "${mainScript}" echo found`
-          : `test -f "${mainScript}" && echo found`
+        `test -f "${mainScript}" && echo found`
       );
 
       if (!mainScriptResult?.success || !mainScriptResult.output?.includes('found')) {
@@ -665,9 +666,7 @@ class DependencyManager {
         );
 
         // Let's check what's actually in the current directory and bundled directory
-        const currentDirResult = await window.electronAPI?.executeCommand(
-          platform === 'windows' ? 'dir /b' : 'ls -la'
-        );
+        const currentDirResult = await window.electronAPI?.executeCommand('ls -la');
         if (currentDirResult?.success) {
           this.addLogEntry('📋 Contents of current directory:', 'info');
           currentDirResult.output.split('\n').forEach(line => {
@@ -677,9 +676,7 @@ class DependencyManager {
           });
         }
 
-        const bundledDirResult = await window.electronAPI?.executeCommand(
-          platform === 'windows' ? 'dir bundled /b' : 'ls -la bundled'
-        );
+        const bundledDirResult = await window.electronAPI?.executeCommand('ls -la bundled');
         if (bundledDirResult?.success) {
           this.addLogEntry('📋 Contents of bundled directory:', 'info');
           bundledDirResult.output.split('\n').forEach(line => {
@@ -693,7 +690,7 @@ class DependencyManager {
 
         // Try direct file check with different commands
         const directCheckResult =
-          await window.electronAPI?.executeCommand('dir bundled\\install.js');
+          await window.electronAPI?.executeCommand('ls bundled/install.js');
         if (directCheckResult?.success) {
           this.addLogEntry('✅ Direct file check succeeded!', 'success');
         } else {
@@ -796,13 +793,10 @@ class DependencyManager {
       let scriptPath;
       if (appDir === '.' || !appDir) {
         // Use relative path
-        scriptPath = platform === 'windows' ? '.\\bundled\\install.js' : './bundled/install.js';
+        scriptPath = path.join('.', 'bundled', 'install.js');
       } else {
         // Use absolute path
-        scriptPath =
-          platform === 'windows'
-            ? `${appDir}\\bundled\\install.js`
-            : `${appDir}/bundled/install.js`;
+        scriptPath = path.join(appDir, 'bundled', 'install.js');
       }
 
       // Use the main installation orchestrator that handles everything
@@ -852,25 +846,9 @@ class DependencyManager {
 
     this.addLogEntry(`🔧 Running ${platform}-specific installation...`, 'info');
 
-    if (platform === 'windows') {
-      // Try PowerShell script first
-      const scriptPath = platformPaths.installScript;
-      this.addLogEntry(`📋 Running PowerShell script: ${scriptPath}`, 'info');
-
-      const scriptResult = await window.electronAPI?.executeCommand(
-        `powershell -ExecutionPolicy Bypass -File "${scriptPath}"`
-      );
-
-      if (scriptResult?.success) {
-        this.addLogEntry('✅ PowerShell installation completed', 'success');
-        return;
-      } else {
-        // Fallback to manual installation
-        await this.manualWindowsInstallation(platformPaths);
-      }
-    } else {
-      // Unix systems (macOS/Linux)
-      const scriptPath = platformPaths.installScript;
+    // macOS installation using bash scripts and homebrew
+    const scriptPath = platformPaths.installScript;
+    if (scriptPath) {
       this.addLogEntry(`📋 Running bash script: ${scriptPath}`, 'info');
 
       const scriptResult = await window.electronAPI?.executeCommand(`bash "${scriptPath}"`);
@@ -878,50 +856,84 @@ class DependencyManager {
       if (scriptResult?.success) {
         this.addLogEntry('✅ Bash installation completed', 'success');
         return;
+      }
+    }
+    
+    // Fallback to manual installation
+    await this.manualMacInstallation(platformPaths);
+  }
+
+  async manualMacInstallation(paths) {
+    this.addLogEntry('🔧 Performing manual macOS installation...', 'info');
+
+    // Try Homebrew first
+    const hasBrewResult = await window.electronAPI?.executeCommand('which brew');
+    if (hasBrewResult?.success) {
+      this.addLogEntry('🍺 Homebrew detected, attempting brew install...', 'info');
+      const brewResult = await window.electronAPI?.executeCommand('brew install ollama');
+      
+      if (brewResult?.success) {
+        this.addLogEntry('✅ Homebrew installation completed', 'success');
+        return;
       } else {
-        // Fallback to manual installation
-        await this.manualUnixInstallation(platformPaths);
+        this.addLogEntry('⚠️ Homebrew installation failed, trying manual method...', 'warning');
+      }
+    }
+
+    // Fallback to manual installation
+    if (paths.binary) {
+      this.addLogEntry('📦 Using manual binary installation...', 'info');
+
+      const targetDir = path.join(process.env.HOME, '.local', 'bin');
+      const targetPath = path.join(targetDir, 'ollama');
+
+      // Create directory
+      await window.electronAPI?.executeCommand(`mkdir -p "${targetDir}"`);
+
+      // Copy or extract binary
+      let copyResult;
+      if (paths.binary.endsWith('.tar.gz')) {
+        // Extract tar.gz
+        const tempDir = path.join(process.env.HOME, '.tmp', 'ollama-install');
+        await window.electronAPI?.executeCommand(`mkdir -p "${tempDir}"`);
+        await window.electronAPI?.executeCommand(`tar -xzf "${paths.binary}" -C "${tempDir}"`);
+        copyResult = await window.electronAPI?.executeCommand(`cp "${tempDir}/ollama" "${targetPath}"`);
+        await window.electronAPI?.executeCommand(`rm -rf "${tempDir}"`);
+      } else {
+        // Direct binary copy
+        copyResult = await window.electronAPI?.executeCommand(`cp "${paths.binary}" "${targetPath}"`);
+      }
+
+      if (copyResult?.success) {
+        // Make executable
+        await window.electronAPI?.executeCommand(`chmod +x "${targetPath}"`);
+        this.addLogEntry('✅ Binary installation completed', 'success');
+
+        // Add to PATH in shell profile
+        const shellProfile = this.getShellProfile();
+        const pathLine = `export PATH="${targetDir}:$PATH"`;
+        await window.electronAPI?.executeCommand(`echo '${pathLine}' >> "${shellProfile}"`);
+        this.addLogEntry('✅ Added to shell PATH', 'success');
+      } else {
+        throw new Error('Binary installation failed');
       }
     }
   }
 
-  async manualWindowsInstallation(paths) {
-    this.addLogEntry('🔧 Performing manual Windows installation...', 'info');
-
-    // Try installer first
-    if (paths.installer) {
-      this.addLogEntry('📦 Attempting silent installer...', 'info');
-      const installerResult = await window.electronAPI?.executeCommand(`"${paths.installer}" /S`);
-
-      if (installerResult?.success) {
-        this.addLogEntry('✅ Silent installer completed', 'success');
-        return;
-      }
-    }
-
-    // Fallback to portable installation
-    if (paths.portable) {
-      this.addLogEntry('📦 Using portable installation...', 'info');
-
-      const targetDir = `${process.env.LOCALAPPDATA || 'C:\\Users\\%USERNAME%\\AppData\\Local'}\\Programs\\Ollama`;
-
-      // Create directory
-      await window.electronAPI?.executeCommand(`mkdir "${targetDir}"`);
-
-      // Extract portable package
-      const extractResult = await window.electronAPI?.executeCommand(
-        `powershell -command "Expand-Archive -Path '${paths.portable}' -DestinationPath '${targetDir}' -Force"`
-      );
-
-      if (extractResult?.success) {
-        this.addLogEntry('✅ Portable installation completed', 'success');
-
-        // Add to PATH
-        await window.electronAPI?.executeCommand(`setx PATH "%PATH%;${targetDir}"`);
-        this.addLogEntry('✅ Added to system PATH', 'success');
-      } else {
-        throw new Error('Portable installation failed');
-      }
+  getShellProfile() {
+    const shell = process.env.SHELL || '/bin/bash';
+    const shellName = path.basename(shell);
+    const homeDir = process.env.HOME;
+    
+    switch (shellName) {
+      case 'zsh':
+        return path.join(homeDir, '.zshrc');
+      case 'bash':
+        return path.join(homeDir, '.bash_profile');
+      case 'fish':
+        return path.join(homeDir, '.config', 'fish', 'config.fish');
+      default:
+        return path.join(homeDir, '.profile');
     }
   }
 
@@ -1205,7 +1217,7 @@ class DependencyManager {
   async checkDevelopmentMode() {
     // Check if we're in development mode (bundled directory doesn't exist or is empty)
     try {
-      const bundledCheckResult = await window.electronAPI.executeCommand('dir bundled');
+      const bundledCheckResult = await window.electronAPI.executeCommand('ls bundled');
 
       if (!bundledCheckResult.success || bundledCheckResult.error.includes('cannot find')) {
         return {
@@ -1216,7 +1228,7 @@ class DependencyManager {
       }
 
       // Check if ollama directory exists in bundled
-      const ollamaCheckResult = await window.electronAPI.executeCommand('dir bundled\\ollama');
+      const ollamaCheckResult = await window.electronAPI.executeCommand('ls bundled/ollama');
 
       if (!ollamaCheckResult.success || ollamaCheckResult.error.includes('cannot find')) {
         return {
@@ -1228,7 +1240,7 @@ class DependencyManager {
 
       // Check if Ollama executable exists
       const exeCheckResult = await window.electronAPI.executeCommand(
-        'dir bundled\\ollama\\ollama.exe'
+        'ls bundled/ollama/ollama'
       );
 
       if (!exeCheckResult.success || exeCheckResult.error.includes('cannot find')) {
@@ -1291,67 +1303,62 @@ class DependencyManager {
       this.addLogEntry(`🔧 Installing bundled models...`, 'info');
 
       // Get user's home directory and set up correct Ollama models path
-      const homeDir = await window.electronAPI?.executeCommand(
-        'powershell -Command "echo $env:USERPROFILE"'
-      );
-      if (!homeDir?.success || !homeDir.output.trim()) {
+      const userProfile = process.env.HOME;
+      if (!userProfile) {
         throw new Error('Could not determine user home directory');
       }
 
-      const userProfile = homeDir.output.trim();
-      const ollamaUserDir = `${userProfile}\\.ollama`;
-      const ollamaModelsDir = `${ollamaUserDir}\\models`;
+      const ollamaUserDir = path.join(userProfile, '.ollama');
+      const ollamaModelsDir = path.join(ollamaUserDir, 'models');
 
       this.addLogEntry(`📁 User profile: ${userProfile}`, 'info');
       this.addLogEntry(`📁 Installing models to: ${ollamaModelsDir}`, 'info');
 
       // Create Ollama directory structure if it doesn't exist
-      await window.electronAPI?.executeCommand(
-        `powershell -Command "New-Item -ItemType Directory -Path '${ollamaUserDir}' -Force"`
-      );
-      await window.electronAPI?.executeCommand(
-        `powershell -Command "New-Item -ItemType Directory -Path '${ollamaModelsDir}' -Force"`
-      );
-      await window.electronAPI?.executeCommand(
-        `powershell -Command "New-Item -ItemType Directory -Path '${ollamaModelsDir}\\manifests' -Force"`
-      );
-      await window.electronAPI?.executeCommand(
-        `powershell -Command "New-Item -ItemType Directory -Path '${ollamaModelsDir}\\blobs' -Force"`
-      );
+      await window.electronAPI?.executeCommand(`mkdir -p "${ollamaUserDir}"`);
+      await window.electronAPI?.executeCommand(`mkdir -p "${ollamaModelsDir}"`);
+      await window.electronAPI?.executeCommand(`mkdir -p "${path.join(ollamaModelsDir, 'manifests')}"`);
+      await window.electronAPI?.executeCommand(`mkdir -p "${path.join(ollamaModelsDir, 'blobs')}"`);
 
       // Get app directory properly
       const appPathResult = await window.electronAPI?.getAppPath();
       const appDir = appPathResult?.success ? appPathResult.path : '.';
-      const bundledModelsPath = `${appDir}\\bundled\\models`;
+      const bundledModelsPath = path.join(appDir, 'bundled', 'models');
 
       this.addLogEntry(`📦 Copying models from: ${bundledModelsPath}`, 'info');
 
       // Check if source directories exist
+      const manifestsPath = path.join(bundledModelsPath, 'manifests');
+      const blobsPath = path.join(bundledModelsPath, 'blobs');
       const manifestsExist = await window.electronAPI?.executeCommand(
-        `powershell -Command "Test-Path '${bundledModelsPath}\\manifests'"`
+        `test -d "${manifestsPath}" && echo "True"`
       );
       const blobsExist = await window.electronAPI?.executeCommand(
-        `powershell -Command "Test-Path '${bundledModelsPath}\\blobs'"`
+        `test -d "${blobsPath}" && echo "True"`
       );
 
       if (!manifestsExist?.output?.includes('True')) {
-        throw new Error(`Manifests directory not found: ${bundledModelsPath}\\manifests`);
+        throw new Error(`Manifests directory not found: ${manifestsPath}`);
       }
       if (!blobsExist?.output?.includes('True')) {
-        throw new Error(`Blobs directory not found: ${bundledModelsPath}\\blobs`);
+        throw new Error(`Blobs directory not found: ${blobsPath}`);
       }
 
       this.addLogEntry(`✅ Found bundled models directories`, 'success');
 
-      // Copy manifests and blobs using PowerShell Copy-Item with error checking
+      // Copy manifests and blobs using cp command
       this.addLogEntry(`📁 Copying manifests...`, 'info');
+      const manifestsSrc = path.join(bundledModelsPath, 'manifests', '*');
+      const manifestsDest = path.join(ollamaModelsDir, 'manifests/');
       const manifestsCopy = await window.electronAPI?.executeCommand(
-        `powershell -Command "Copy-Item '${bundledModelsPath}\\manifests\\*' '${ollamaModelsDir}\\manifests\\' -Recurse -Force"`
+        `cp -R "${manifestsSrc}" "${manifestsDest}"`
       );
 
       this.addLogEntry(`📁 Copying blobs...`, 'info');
+      const blobsSrc = path.join(bundledModelsPath, 'blobs', '*');
+      const blobsDest = path.join(ollamaModelsDir, 'blobs/');
       const blobsCopy = await window.electronAPI?.executeCommand(
-        `powershell -Command "Copy-Item '${bundledModelsPath}\\blobs\\*' '${ollamaModelsDir}\\blobs\\' -Recurse -Force"`
+        `cp -R "${blobsSrc}" "${blobsDest}"`
       );
 
       if (!manifestsCopy?.success) {
@@ -1366,11 +1373,13 @@ class DependencyManager {
 
       // Verify the models were copied successfully
       this.addLogEntry(`🔍 Verifying model installation...`, 'info');
+      const manifestsDir = path.join(ollamaModelsDir, 'manifests');
+      const blobsDir = path.join(ollamaModelsDir, 'blobs');
       const verifyManifests = await window.electronAPI?.executeCommand(
-        `powershell -Command "Get-ChildItem '${ollamaModelsDir}\\manifests' | Measure-Object | Select-Object -ExpandProperty Count"`
+        `ls -1 "${manifestsDir}" | wc -l`
       );
       const verifyBlobs = await window.electronAPI?.executeCommand(
-        `powershell -Command "Get-ChildItem '${ollamaModelsDir}\\blobs' | Measure-Object | Select-Object -ExpandProperty Count"`
+        `ls -1 "${blobsDir}" | wc -l`
       );
 
       const manifestCount = parseInt(verifyManifests?.output?.trim()) || 0;

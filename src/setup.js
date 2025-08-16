@@ -238,42 +238,16 @@ async function checkOllama() {
 // Helper function to start Ollama service
 async function startOllamaService() {
   try {
-    const platform = os.platform();
+    // On macOS, use ollama serve
+    logOutput('ollama-log', 'Starting Ollama with serve command...', 'info');
+    const { spawn } = require('child_process');
+    const child = spawn('ollama', ['serve'], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref(); // Allow parent to exit independently
     
-    if (platform === 'win32') {
-      // On Windows, try to start Ollama service
-      // First check if it's a Windows service
-      const serviceResult = await executeCommand('sc', ['query', 'Ollama']);
-      
-      if (serviceResult.success) {
-        // It's a Windows service - try to start it
-        logOutput('ollama-log', 'Starting Ollama Windows service...', 'info');
-        return await executeCommand('sc', ['start', 'Ollama']);
-      } else {
-        // Not a service - try to run ollama serve
-        logOutput('ollama-log', 'Starting Ollama with serve command...', 'info');
-        // Use spawn with detached option to run in background
-        const { spawn } = require('child_process');
-        const child = spawn('ollama', ['serve'], {
-          detached: true,
-          stdio: 'ignore'
-        });
-        child.unref(); // Allow parent to exit independently
-        
-        return { success: true, message: 'Ollama serve started in background' };
-      }
-    } else {
-      // On macOS/Linux, use ollama serve
-      logOutput('ollama-log', 'Starting Ollama with serve command...', 'info');
-      const { spawn } = require('child_process');
-      const child = spawn('ollama', ['serve'], {
-        detached: true,
-        stdio: 'ignore'
-      });
-      child.unref(); // Allow parent to exit independently
-      
-      return { success: true, message: 'Ollama serve started in background' };
-    }
+    return { success: true, message: 'Ollama serve started in background' };
   } catch (error) {
     return {
       success: false,
@@ -283,19 +257,8 @@ async function startOllamaService() {
 }
 
 function getOllamaModelsPath() {
-  const platform = os.platform();
   const homeDir = os.homedir();
-  
-  switch (platform) {
-    case 'win32':
-      return path.join(homeDir, '.ollama', 'models');
-    case 'darwin':
-      return path.join(homeDir, '.ollama', 'models');
-    case 'linux':
-      return path.join(homeDir, '.ollama', 'models');
-    default:
-      return path.join(homeDir, '.ollama', 'models');
-  }
+  return path.join(homeDir, '.ollama', 'models');
 }
 
 function openOllamaInstall() {
@@ -328,9 +291,9 @@ async function setupNodejs() {
     
     logOutput('nodejs-log', 'Checking Node.js environment...', 'info');
     
-    if (envInfo.bundled.available) {
-      // Bundled Node.js is available
-      logOutput('nodejs-log', `✅ Bundled Node.js found: ${envInfo.bundled.version}`, 'success');
+    if (envInfo.selected === 'bundled') {
+      // Using bundled Node.js (preferred)
+      logOutput('nodejs-log', `✅ Using bundled Node.js: ${envInfo.bundled.version}`, 'success');
       logOutput('nodejs-log', `📁 Path: ${envInfo.bundled.path}`, 'info');
       
       if (envInfo.bundled.npmPath) {
@@ -344,10 +307,10 @@ async function setupNodejs() {
         nodejsPathEl.textContent = `Bundled Node.js: ${envInfo.bundled.path}`;
       }
       
-      updateStepStatus('nodejs', 'success', 'Bundled Available');
+      updateStepStatus('nodejs', 'success', 'Bundled Active');
       
-    } else if (envInfo.system.available) {
-      // System Node.js is available
+    } else if (envInfo.selected === 'system') {
+      // Fallback to system Node.js
       logOutput('nodejs-log', `⚠️  Using system Node.js: ${envInfo.system.version}`, 'info');
       logOutput('nodejs-log', `📁 Path: ${envInfo.system.path}`, 'info');
       logOutput('nodejs-log', `💡 Consider bundling Node.js for better consistency`, 'info');
@@ -359,7 +322,7 @@ async function setupNodejs() {
         nodejsPathEl.textContent = `System Node.js: ${envInfo.system.path}`;
       }
       
-      updateStepStatus('nodejs', 'success', 'System Available');
+      updateStepStatus('nodejs', 'success', 'System Fallback');
       
     } else {
       // No Node.js available
@@ -481,6 +444,370 @@ async function checkInstalledModels() {
   checkBtn.disabled = false;
   checkBtn.classList.remove('loading');
   checkBtn.innerHTML = 'Recheck Models';
+}
+
+// Step 5: Download Models Functions
+async function startOllamaForDownload() {
+  const startBtn = document.getElementById('start-ollama-download-btn');
+  const downloadBtn = document.getElementById('download-models-btn');
+  
+  startBtn.disabled = true;
+  startBtn.innerHTML = '<span class="spinner"></span>Starting Ollama...';
+  
+  logOutput('models-download-log', '🚀 Starting Ollama service...', 'info');
+  
+  try {
+    // First check if Ollama is already running but we couldn't detect it
+    logOutput('models-download-log', '🔍 Double-checking Ollama status...', 'info');
+    const apiRecheck = await window.electronAPI?.executeCommand('curl -s http://localhost:11434/api/tags');
+    if (apiRecheck?.success && apiRecheck?.output?.includes('models')) {
+      logOutput('models-download-log', '✅ Ollama was already running! Detection issue resolved.', 'success');
+      startBtn.style.display = 'none';
+      downloadBtn.disabled = false;
+      await checkOllamaStatusForDownload();
+      return;
+    }
+    
+    // Try multiple methods to start Ollama
+    let success = false;
+    
+    // Method 1: Try to start via GUI app (avoid duplicate processes)
+    logOutput('models-download-log', '📱 Attempting to start Ollama app...', 'info');
+    const appResult = await window.electronAPI?.executeCommand('open -a Ollama');
+    if (appResult?.success) {
+      logOutput('models-download-log', '⏳ Waiting for Ollama app to start...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Use API check instead of ollama list for reliability
+      const checkApp = await window.electronAPI?.executeCommand('curl -s http://localhost:11434/api/tags');
+      if (checkApp?.success && checkApp?.output?.includes('models')) {
+        logOutput('models-download-log', '✅ Ollama app started successfully!', 'success');
+        success = true;
+      }
+    }
+    
+    // Method 2: If app didn't work, try command line
+    if (!success) {
+      logOutput('models-download-log', '🖥️ Trying command-line start...', 'info');
+      const cliResult = await window.electronAPI?.executeCommand('/usr/local/bin/ollama serve > /dev/null 2>&1 &');
+      if (cliResult?.success) {
+        logOutput('models-download-log', '⏳ Waiting for CLI service to start...', 'info');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const checkCli = await window.electronAPI?.executeCommand('ollama list');
+        if (checkCli?.success) {
+          logOutput('models-download-log', '✅ Ollama CLI service started successfully!', 'success');
+          success = true;
+        }
+      }
+    }
+    
+    // Method 3: Try nohup for background process
+    if (!success) {
+      logOutput('models-download-log', '🔄 Trying background process start...', 'info');
+      const nohupResult = await window.electronAPI?.executeCommand('nohup ollama serve >/dev/null 2>&1 &');
+      if (nohupResult?.success) {
+        logOutput('models-download-log', '⏳ Waiting for background service...', 'info');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const checkNohup = await window.electronAPI?.executeCommand('ollama list');
+        if (checkNohup?.success) {
+          logOutput('models-download-log', '✅ Ollama background service started!', 'success');
+          success = true;
+        }
+      }
+    }
+    
+    if (success) {
+      startBtn.style.display = 'none';
+      downloadBtn.disabled = false;
+      // Refresh the status check
+      await checkOllamaStatusForDownload();
+    } else {
+      logOutput('models-download-log', '❌ All startup methods failed. Please start Ollama manually.', 'error');
+      logOutput('models-download-log', '💡 Try: 1) Open Ollama app, 2) Run "ollama serve" in terminal', 'info');
+      startBtn.innerHTML = 'Retry Start Ollama';
+      startBtn.disabled = false;
+    }
+    
+  } catch (error) {
+    logOutput('models-download-log', `❌ Error starting Ollama: ${error.message}`, 'error');
+    startBtn.innerHTML = 'Retry Start Ollama';
+    startBtn.disabled = false;
+  }
+}
+
+async function checkOllamaStatusForDownload() {
+  try {
+    const downloadBtn = document.getElementById('download-models-btn');
+    const startOllamaBtn = document.getElementById('start-ollama-download-btn');
+    
+    console.log('Starting Ollama detection...');
+    
+    // Simple and reliable detection: just try ollama list
+    let isRunning = false;
+    
+    try {
+      const listResult = await window.electronAPI?.executeCommand('ollama list');
+      console.log('Ollama list result:', {
+        success: listResult?.success,
+        output: listResult?.output,
+        error: listResult?.error
+      });
+      
+      // If the command succeeds and doesn't contain connection errors, Ollama is running
+      if (listResult?.success) {
+        const output = listResult.output || '';
+        const hasConnectionError = output.includes('connection refused') || 
+                                 output.includes('connect: connection refused') ||
+                                 output.includes('Connection refused');
+        
+        if (!hasConnectionError) {
+          isRunning = true;
+          console.log('✅ Ollama is running (ollama list succeeded)');
+        } else {
+          console.log('❌ Ollama not running (connection refused)');
+        }
+      } else {
+        console.log('❌ Ollama command failed:', listResult?.error);
+      }
+    } catch (error) {
+      console.log('❌ Exception during ollama list:', error);
+    }
+    
+    // Fallback: Try API call if ollama list didn't work
+    if (!isRunning) {
+      try {
+        const apiResult = await window.electronAPI?.executeCommand('curl -s -m 2 http://localhost:11434/api/tags');
+        console.log('API check result:', {
+          success: apiResult?.success,
+          output: apiResult?.output
+        });
+        
+        if (apiResult?.success && apiResult?.output) {
+          const output = apiResult.output.trim();
+          if (output.includes('{') && (output.includes('models') || output.includes('[]'))) {
+            isRunning = true;
+            console.log('✅ Ollama is running (API responded)');
+          }
+        }
+      } catch (error) {
+        console.log('❌ API check failed:', error);
+      }
+    }
+    
+    // Update UI based on detection result
+    if (isRunning) {
+      if (downloadBtn) {
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = 'Download Selected Models';
+        downloadBtn.style.backgroundColor = '';
+      }
+      if (startOllamaBtn) {
+        startOllamaBtn.style.display = 'none';
+      }
+      console.log('🟢 UI Updated: Download enabled');
+    } else {
+      // Check if Ollama is installed
+      const whichResult = await window.electronAPI?.executeCommand('which ollama');
+      const isInstalled = whichResult?.success;
+      
+      if (!isInstalled) {
+        // Not installed
+        if (downloadBtn) {
+          downloadBtn.disabled = true;
+          downloadBtn.innerHTML = '❌ Ollama Not Installed';
+          downloadBtn.style.backgroundColor = '#dc3545';
+        }
+        if (startOllamaBtn) {
+          startOllamaBtn.style.display = 'inline-flex';
+          startOllamaBtn.innerHTML = 'Install Ollama';
+          startOllamaBtn.onclick = () => {
+            window.electronAPI?.executeCommand('open https://ollama.com/download');
+          };
+        }
+      } else {
+        // Installed but not running
+        if (downloadBtn) {
+          downloadBtn.disabled = true;
+          downloadBtn.innerHTML = '⚠️ Start Ollama First';
+          downloadBtn.style.backgroundColor = '#ffc107';
+        }
+        if (startOllamaBtn) {
+          startOllamaBtn.style.display = 'inline-flex';
+          startOllamaBtn.innerHTML = '🚀 Start Ollama';
+        }
+      }
+      console.log('🔴 UI Updated: Download disabled, start required');
+    }
+  } catch (error) {
+    console.error('Error in checkOllamaStatusForDownload:', error);
+  }
+}
+
+function updateSelectedModelsInfo() {
+  const checkboxes = document.querySelectorAll('#model-checkboxes input[type="checkbox"]:checked');
+  const count = checkboxes.length;
+  const infoEl = document.getElementById('selected-models-info');
+  if (infoEl) {
+    infoEl.textContent = `${count} model${count !== 1 ? 's' : ''} selected`;
+  }
+}
+
+function selectAllModels() {
+  const checkboxes = document.querySelectorAll('#model-checkboxes input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = true;
+  });
+  updateSelectedModelsInfo();
+}
+
+function clearAllModels() {
+  const checkboxes = document.querySelectorAll('#model-checkboxes input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = false;
+  });
+  updateSelectedModelsInfo();
+}
+
+async function downloadSelectedModels() {
+  const checkboxes = document.querySelectorAll('#model-checkboxes input[type="checkbox"]:checked');
+  const selectedModels = Array.from(checkboxes).map(cb => cb.value);
+  
+  if (selectedModels.length === 0) {
+    logOutput('models-download-log', '⚠️ No models selected for download', 'info');
+    return;
+  }
+
+  updateStepStatus('models-download', 'checking', 'Downloading...');
+  logOutput('models-download-log', `🚀 Starting download of ${selectedModels.length} model(s)...`, 'info');
+  
+  const downloadBtn = document.getElementById('download-models-btn');
+  const progressDiv = document.getElementById('download-progress');
+  const progressFill = document.getElementById('download-progress-fill');
+  const progressText = document.getElementById('download-progress-text');
+  
+  downloadBtn.disabled = true;
+  downloadBtn.innerHTML = '<span class="spinner"></span>Downloading...';
+  progressDiv.style.display = 'block';
+  
+  try {
+    // Check if Ollama is running using multiple methods
+    let isRunning = false;
+    
+    // Method 1: API check (most reliable)
+    const apiCheck = await window.electronAPI?.executeCommand('curl -s http://localhost:11434/api/tags');
+    if (apiCheck?.success && apiCheck?.output?.includes('models')) {
+      isRunning = true;
+      logOutput('models-download-log', '✅ Ollama API is accessible', 'success');
+    }
+    
+    // Method 2: ollama list command (if API didn't work)
+    if (!isRunning) {
+      const listCheck = await window.electronAPI?.executeCommand('ollama list');
+      if (listCheck?.success && !listCheck?.output?.includes('connect: connection refused')) {
+        isRunning = true;
+        logOutput('models-download-log', '✅ Ollama CLI is accessible', 'success');
+      }
+    }
+    
+    if (!isRunning) {
+      logOutput('models-download-log', '🚀 Ollama is not running. Auto-starting Ollama...', 'info');
+      
+      // Try to auto-start Ollama using multiple methods
+      let success = false;
+      
+      // Method 1: Try GUI app first (most reliable on macOS)
+      const appResult = await window.electronAPI?.executeCommand('open -a Ollama');
+      if (appResult?.success) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const checkApp = await window.electronAPI?.executeCommand('ollama list');
+        if (checkApp?.success) {
+          logOutput('models-download-log', '✅ Ollama app auto-started!', 'success');
+          success = true;
+        }
+      }
+      
+      // Method 2: Fallback to CLI
+      if (!success) {
+        const cliResult = await window.electronAPI?.executeCommand('nohup ollama serve >/dev/null 2>&1 &');
+        if (cliResult?.success) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          const checkCli = await window.electronAPI?.executeCommand('ollama list');
+          if (checkCli?.success) {
+            logOutput('models-download-log', '✅ Ollama CLI auto-started!', 'success');
+            success = true;
+          }
+        }
+      }
+      
+      if (!success) {
+        logOutput('models-download-log', '❌ Auto-start failed. Please use "Start Ollama First" button.', 'error');
+        updateStepStatus('models-download', 'error', 'Ollama Start Failed');
+        
+        // Show the manual start button
+        const startOllamaBtn = document.getElementById('start-ollama-download-btn');
+        if (startOllamaBtn) {
+          startOllamaBtn.style.display = 'inline-flex';
+        }
+        return;
+      }
+    } else {
+      logOutput('models-download-log', '✅ Ollama is running and ready for downloads', 'success');
+    }
+
+    let completed = 0;
+    const total = selectedModels.length;
+
+    for (const modelName of selectedModels) {
+      const progress = Math.round((completed / total) * 100);
+      progressFill.style.width = `${progress}%`;
+      progressText.textContent = `Downloading ${modelName}... (${completed + 1}/${total})`;
+      
+      logOutput('models-download-log', `📥 Downloading ${modelName}...`, 'info');
+      
+      // Execute ollama pull command
+      const pullResult = await window.electronAPI?.executeCommand(`ollama pull ${modelName}`);
+      
+      if (pullResult?.success) {
+        logOutput('models-download-log', `✅ ${modelName} downloaded successfully`, 'success');
+        completed++;
+      } else {
+        logOutput('models-download-log', `❌ Failed to download ${modelName}: ${pullResult?.error || 'Unknown error'}`, 'error');
+        logOutput('models-download-log', `   Output: ${pullResult?.output || 'No output'}`, 'info');
+      }
+    }
+
+    // Final progress update
+    progressFill.style.width = '100%';
+    progressText.textContent = `Download complete! (${completed}/${total} successful)`;
+    
+    if (completed === total) {
+      logOutput('models-download-log', `🎉 All models downloaded successfully!`, 'success');
+      updateStepStatus('models-download', 'success', 'Download Complete');
+    } else if (completed > 0) {
+      logOutput('models-download-log', `⚠️ Partial success: ${completed}/${total} models downloaded`, 'warning');
+      updateStepStatus('models-download', 'partial', 'Partial Success');
+    } else {
+      logOutput('models-download-log', `❌ No models were downloaded successfully`, 'error');
+      updateStepStatus('models-download', 'error', 'Download Failed');
+    }
+
+    // Check models status to update the main list
+    await checkInstalledModels();
+    
+  } catch (error) {
+    logOutput('models-download-log', `❌ Download error: ${error.message}`, 'error');
+    updateStepStatus('models-download', 'error', 'Download Failed');
+  } finally {
+    downloadBtn.disabled = false;
+    downloadBtn.innerHTML = 'Download Selected Models';
+    
+    // Hide progress after a delay
+    setTimeout(() => {
+      progressDiv.style.display = 'none';
+    }, 3000);
+  }
 }
 
 // Step 4: Install Bundled Models
@@ -677,6 +1004,47 @@ function setupEventListeners() {
     installModelsBtn.addEventListener('click', installBundledModels);
   }
   
+  // Download models button
+  const downloadModelsBtn = document.getElementById('download-models-btn');
+  if (downloadModelsBtn) {
+    downloadModelsBtn.addEventListener('click', downloadSelectedModels);
+  }
+  
+  // Start Ollama for download button
+  const startOllamaDownloadBtn = document.getElementById('start-ollama-download-btn');
+  if (startOllamaDownloadBtn) {
+    startOllamaDownloadBtn.addEventListener('click', startOllamaForDownload);
+  }
+  
+  // Select all models button
+  const selectAllBtn = document.getElementById('select-all-models-btn');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', selectAllModels);
+  }
+  
+  // Clear all models button
+  const clearAllBtn = document.getElementById('clear-all-models-btn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllModels);
+  }
+  
+  // Model checkbox change handlers
+  const checkboxes = document.querySelectorAll('#model-checkboxes input[type="checkbox"]');
+  checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateSelectedModelsInfo);
+  });
+  
+  // Refresh Ollama status button
+  const refreshOllamaBtn = document.getElementById('refresh-ollama-status-btn');
+  if (refreshOllamaBtn) {
+    refreshOllamaBtn.addEventListener('click', async () => {
+      refreshOllamaBtn.innerHTML = '🔄';
+      refreshOllamaBtn.disabled = true;
+      await checkOllamaStatusForDownload();
+      refreshOllamaBtn.disabled = false;
+    });
+  }
+  
   // Complete setup button
   const completeSetupBtn = document.getElementById('complete-setup-btn');
   if (completeSetupBtn) {
@@ -715,6 +1083,12 @@ document.addEventListener('DOMContentLoaded', function() {
       const el = document.getElementById(id);
       console.log(`Element ${id}: ${el ? 'Found' : 'NOT FOUND'}`);
     });
+    
+    // Initialize model selection counter
+    updateSelectedModelsInfo();
+    
+    // Check Ollama status for model downloads
+    checkOllamaStatusForDownload();
     
     logOutput('ollama-log', 'Setup system initialized', 'info');
     updateProgress();

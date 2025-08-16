@@ -370,6 +370,117 @@
          border-bottom: none;
        }
 
+       /* Model selection styles */
+       .models-selection {
+         margin: 20px 0;
+       }
+
+       .models-selection h4 {
+         color: var(--text-secondary);
+         margin-bottom: 15px;
+         font-size: 14px;
+         font-weight: 600;
+       }
+
+       .model-checkboxes {
+         display: flex;
+         flex-direction: column;
+         gap: 12px;
+         margin-bottom: 20px;
+       }
+
+       .model-checkbox {
+         display: flex;
+         align-items: center;
+         padding: 12px;
+         background: var(--bg-secondary);
+         border: 1px solid var(--border-color);
+         border-radius: 6px;
+         cursor: pointer;
+         transition: all 0.2s ease;
+       }
+
+       .model-checkbox:hover {
+         background: var(--bg-tertiary);
+         border-color: var(--accent-blue);
+       }
+
+       .model-checkbox input[type="checkbox"] {
+         margin-right: 12px;
+         width: 16px;
+         height: 16px;
+         accent-color: var(--accent-blue);
+       }
+
+       .model-name {
+         font-weight: 600;
+         color: var(--text-primary);
+         margin-right: 10px;
+         min-width: 150px;
+       }
+
+       .model-details {
+         color: var(--text-secondary);
+         font-size: 12px;
+       }
+
+       .download-controls {
+         display: flex;
+         align-items: center;
+         gap: 10px;
+         flex-wrap: wrap;
+         margin-bottom: 20px;
+       }
+
+       .download-info {
+         margin-left: auto;
+         color: var(--text-secondary);
+         font-size: 12px;
+       }
+
+       .download-progress {
+         margin-top: 15px;
+       }
+
+       .progress-bar {
+         width: 100%;
+         height: 8px;
+         background: var(--bg-secondary);
+         border-radius: 4px;
+         overflow: hidden;
+         margin-bottom: 8px;
+       }
+
+       .progress-fill {
+         height: 100%;
+         background: linear-gradient(90deg, var(--accent-blue), var(--accent-magenta));
+         width: 0%;
+         transition: width 0.3s ease;
+       }
+
+       .progress-text {
+         color: var(--text-secondary);
+         font-size: 12px;
+         text-align: center;
+       }
+
+       /* Loading spinner */
+       .spinner {
+         display: inline-block;
+         width: 14px;
+         height: 14px;
+         border: 2px solid transparent;
+         border-top: 2px solid currentColor;
+         border-radius: 50%;
+         animation: spin 1s linear infinite;
+         margin-right: 8px;
+       }
+
+       @keyframes spin {
+         0% { transform: rotate(0deg); }
+         100% { transform: rotate(360deg); }
+       }
+
        /* Enhanced hover effects and animations */
        .setup-step {
          transition: all 0.3s ease;
@@ -502,9 +613,71 @@
         </div>
         <div class="step-content">
           <p>Installing pre-packaged AI models from the bundled collection...</p>
-          <button class="btn btn-success" id="install-models-btn" disabled>Install Models</button>
+          <button class="btn btn-success" id="install-models-btn" disabled>Install Bundled Models</button>
           <div class="log-output" id="models-install-log" style="display: none;"></div>
           <div class="path-display" id="models-target-path" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 5: Download Models (Optional) -->
+      <div class="setup-step" id="step-models-download">
+        <div class="step-header">
+          <div class="step-number" id="step5-number">5</div>
+          <h3 class="step-title">Download Models (Optional)</h3>
+          <span class="status-indicator status-pending" id="models-download-status">Available</span>
+        </div>
+        <div class="step-content">
+          <p>Download AI models directly from Ollama registry. Select which models you want to install:</p>
+          
+          <div class="models-selection">
+            <h4>Available Models:</h4>
+            <div class="model-checkboxes" id="model-checkboxes">
+              <label class="model-checkbox">
+                <input type="checkbox" value="qwen2.5-coder:3b" checked>
+                <span class="model-name">Qwen2.5 Coder 3B</span>
+                <span class="model-details">(1.9GB) - ✅ Verified - Optimized for code generation</span>
+              </label>
+              <label class="model-checkbox">
+                <input type="checkbox" value="llama3.2:3b">
+                <span class="model-name">Llama 3.2 3B</span>
+                <span class="model-details">(2.0GB) - General purpose language model</span>
+              </label>
+              <label class="model-checkbox">
+                <input type="checkbox" value="codellama:7b">
+                <span class="model-name">CodeLlama 7B</span>
+                <span class="model-details">(3.8GB) - Advanced code completion</span>
+              </label>
+              <label class="model-checkbox">
+                <input type="checkbox" value="deepseek-coder:6.7b">
+                <span class="model-name">DeepSeek Coder 6.7B</span>
+                <span class="model-details">(3.7GB) - Specialized coding assistant</span>
+              </label>
+              <label class="model-checkbox">
+                <input type="checkbox" value="phi3:3.8b">
+                <span class="model-name">Phi-3 3.8B</span>
+                <span class="model-details">(2.3GB) - Microsoft's efficient language model</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="download-controls">
+            <button class="btn btn-primary" id="download-models-btn">Download Selected Models</button>
+            <button class="btn btn-success" id="start-ollama-download-btn" style="display: none;">Start Ollama First</button>
+            <button class="btn btn-secondary" id="select-all-models-btn">Select All</button>
+            <button class="btn btn-secondary" id="clear-all-models-btn">Clear All</button>
+            <button class="btn btn-secondary" id="refresh-ollama-status-btn" title="Refresh Ollama Status">🔄</button>
+            <div class="download-info">
+              <span id="selected-models-info">1 model selected</span>
+            </div>
+          </div>
+
+          <div class="log-output" id="models-download-log" style="display: none;"></div>
+          <div class="download-progress" id="download-progress" style="display: none;">
+            <div class="progress-bar">
+              <div class="progress-fill" id="download-progress-fill"></div>
+            </div>
+            <div class="progress-text" id="download-progress-text">Downloading...</div>
+          </div>
         </div>
       </div>
 

@@ -152,7 +152,7 @@ class BundledNodeJS {
 
       const child = spawn(npmPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: os.platform() === 'win32', // NPM needs shell on Windows
+        shell: false, // Use direct execution on macOS
         ...options
       });
 
@@ -216,8 +216,7 @@ class BundledNodeJS {
         info.system.version = systemResult.stdout.trim();
         
         // Try to get system Node.js path
-        const whichCmd = os.platform() === 'win32' ? 'where' : 'which';
-        const pathResult = await this.executeSystemCommand(whichCmd, ['node']);
+        const pathResult = await this.executeSystemCommand('which', ['node']);
         if (pathResult.success) {
           info.system.path = pathResult.stdout.trim().split('\n')[0];
         }

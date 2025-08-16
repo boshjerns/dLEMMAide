@@ -1069,6 +1069,47 @@ body {
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
+/* Token Controls */
+.chat-token-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.token-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.token-control label {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.token-input {
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: var(--glass-blur-light);
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 3px 6px;
+  font-size: 10px;
+  width: 60px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
 /* Chat Messages */
 .chat-messages {
   flex: 1;
@@ -1751,6 +1792,79 @@ body {
   contain: layout style paint;
 }
 
+/* Performance Mode - Disable expensive effects while keeping essential animations */
+.performance-mode * {
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* Remove most transitions but keep button/hover feedback */
+.performance-mode *:not(button):not(.btn-primary):not(.btn-secondary):not(.title-btn):not(.layout-btn) {
+  transition: none !important;
+}
+
+/* Keep essential loading animations */
+.performance-mode .loading-spinner,
+.performance-mode .progress-fill,
+.performance-mode .progress-fill::after {
+  animation: initial !important;
+}
+
+/* Disable expensive animations but keep completion feedback */
+.performance-mode *:not(.loading-spinner):not(.progress-fill):not(.progress-fill::after):not(.completion-content) {
+  animation: none !important;
+}
+
+/* Disable transforms that cause repaints except for essential feedback */
+.performance-mode *:not(button):not(.btn-primary):not(.btn-secondary):not(.title-btn):not(.layout-btn) {
+  transform: none !important;
+}
+
+.performance-mode .CodeMirror {
+  text-shadow: none !important;
+}
+
+/* Replace glass backgrounds with solid colors */
+.performance-mode .glass-card,
+.performance-mode .glass-overlay,
+.performance-mode .title-bar,
+.performance-mode .file-sidebar,
+.performance-mode .editor-area,
+.performance-mode .terminal-panel,
+.performance-mode .chat-interface {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.performance-mode .file-tabs-bar,
+.performance-mode .sidebar-header,
+.performance-mode .terminal-header,
+.performance-mode .chat-header {
+  background: var(--bg-tertiary) !important;
+}
+
+.performance-mode .message-content,
+.performance-mode .code-chunk-card,
+.performance-mode .todo-item {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.performance-mode .btn-primary {
+  background: var(--accent-blue) !important;
+}
+
+.performance-mode .btn-secondary {
+  background: var(--bg-tertiary) !important;
+}
+
+/* Performance mode indicator */
+.performance-mode #performance-toggle-btn {
+  background: rgba(251, 191, 36, 0.2) !important;
+  color: var(--accent-yellow) !important;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
   .file-sidebar {
@@ -1834,6 +1948,330 @@ i[data-lucide] {
   height: 1em;
   stroke-width: 2;
 } 
+
+/* Todo List Component - Glass Morphic */
+.todo-list-container {
+  background: var(--glass-card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-bottom: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  min-height: 120px;
+  max-height: 300px;
+  box-shadow: var(--glass-shadow);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.todo-list-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent-gradient);
+  opacity: 0.03;
+  pointer-events: none;
+}
+
+.todo-header {
+  background: rgba(22, 27, 34, 0.95);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.todo-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.todo-title i {
+  width: 12px;
+  height: 12px;
+  color: var(--accent-blue);
+}
+
+.todo-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.todo-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.todo-clear-btn:hover {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--error-color);
+}
+
+.todo-clear-btn i {
+  width: 12px;
+  height: 12px;
+}
+
+.todo-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  font-size: 11px;
+  background: rgba(22, 27, 34, 0.6);
+  border: 1px solid transparent;
+}
+
+.todo-item-pending {
+  border-color: var(--glass-border);
+  opacity: 0.7;
+}
+
+.todo-item-in_progress {
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.3);
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.2);
+}
+
+.todo-item-completed {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  opacity: 0.8;
+}
+
+.todo-item-failed {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.3);
+  opacity: 0.8;
+}
+
+.todo-status {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-completed {
+  color: var(--success-color) !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.status-pending {
+  color: var(--text-muted) !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.status-failed {
+  color: var(--error-color) !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--glass-border);
+  border-top: 2px solid var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.todo-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.todo-text {
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-item-completed .todo-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.todo-tool {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 400;
+  background: rgba(13, 17, 23, 0.8);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  width: fit-content;
+}
+
+.todo-progress {
+  background: rgba(13, 17, 23, 0.8);
+  border-top: 1px solid var(--glass-border);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(22, 27, 34, 0.8);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: progress-shine 2s infinite;
+}
+
+@keyframes progress-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.progress-text {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.todo-completion-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid var(--success-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  z-index: 10;
+  animation: completionPulse 0.5s ease-out;
+}
+
+.completion-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success-color);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.completion-content i {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+@keyframes completionPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Adjust layout when todo list is visible */
+.ide-container:has(.todo-list-container[style*="display: block"]) .ide-layout {
+  height: calc(100vh - 28px - 240px - 120px); /* Account for todo list */
+}
+
+.ide-container[data-layout="side-by-side"]:has(.todo-list-container[style*="display: block"]) .ide-layout {
+  height: calc(100vh - 28px - 120px); /* Account for todo list in side-by-side */
+}
+
+.ide-container[data-layout="no-chat"]:has(.todo-list-container[style*="display: block"]) .ide-layout {
+  height: calc(100vh - 28px - 120px); /* Account for todo list when chat is hidden */
+}
+
+/* Todo list scrollbar */
+.todo-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.todo-list::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+.todo-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+.todo-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
 
 /* Chat resize performance optimizations */
 .chat-interface.resizing {

@@ -47,6 +47,9 @@
           </div>
         </div>
         <div class="title-bar-right">
+          <button class="title-btn" id="performance-toggle-btn" title="Toggle Performance Mode">
+            <i data-lucide="zap"></i>
+          </button>
           <button class="title-btn" id="minimize-btn">
             <i data-lucide="minus"></i>
           </button>
@@ -212,6 +215,16 @@
             <select id="model-selector" class="model-dropdown">
               <option value="">Loading models...</option>
             </select>
+          </div>
+          <div class="chat-token-controls">
+            <div class="token-control">
+              <label for="context-tokens">Context:</label>
+              <input type="number" id="context-tokens" class="token-input" value="32768" min="1024" max="131072" step="1024" title="Context window size (num_ctx)">
+            </div>
+            <div class="token-control">
+              <label for="max-tokens">Max Output:</label>
+              <input type="number" id="max-tokens" class="token-input" value="4096" min="256" max="16384" step="256" title="Maximum output tokens (num_predict)">
+            </div>
           </div>
           <div class="chat-context-indicator" style="display: none;"></div>
           <div class="chat-controls">
@@ -387,6 +400,8 @@
     <script src="ide-linting-manager.js"></script>
     <script src="ide-terminal-manager.js"></script>
     <script src="ide-ai-manager.js"></script>
+    <script src="todo-manager.js"></script>
+    <script src="todo-execution-methods.js"></script>
     <script src="ide-core.js"></script>
     
     <!-- Initialize Lucide Icons -->
@@ -425,6 +440,34 @@
             console.error('Failed to close window:', error);
           }
         });
+        
+        // Performance mode toggle
+        const performanceToggleBtn = document.getElementById('performance-toggle-btn');
+        performanceToggleBtn?.addEventListener('click', () => {
+          const ideContainer = document.querySelector('.ide-container');
+          const isPerformanceMode = ideContainer.classList.contains('performance-mode');
+          
+          if (isPerformanceMode) {
+            ideContainer.classList.remove('performance-mode');
+            console.log('🎨 Performance mode OFF - Glass effects enabled');
+          } else {
+            ideContainer.classList.add('performance-mode');
+            console.log('⚡ Performance mode ON - Glass effects disabled');
+          }
+          
+          // Save preference to localStorage
+          localStorage.setItem('performanceMode', !isPerformanceMode);
+        });
+        
+        // Default performance mode ON unless explicitly disabled by user
+        const ideContainerEl = document.querySelector('.ide-container');
+        const savedPerformancePref = localStorage.getItem('performanceMode');
+        if (savedPerformancePref === null || savedPerformancePref === 'true') {
+          ideContainerEl.classList.add('performance-mode');
+          console.log('⚡ Performance mode ON - Default enabled');
+        } else {
+          console.log('🎨 Performance mode OFF - User preference');
+        }
         
         // Layout switching functionality
         const layoutBtns = document.querySelectorAll('.layout-btn');

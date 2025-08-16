@@ -1,0 +1,48 @@
+{
+  "sessionId": "session_example_123456789",
+  "startTime": "2025-01-16T13:00:00.000Z",
+  "conversations": [
+    {
+      "id": "conv_example_1",
+      "timestamp": "2025-01-16T13:01:00.000Z",
+      "userMessage": "create a simple todo app",
+      "assistantResponse": "I'll create a todo application with HTML, CSS, and JavaScript...",
+      "intent": { "tool": "create_file", "confidence": 0.95 },
+      "toolsCalled": ["create_file", "edit_file"],
+      "completed": true
+    }
+  ],
+  "completedTasks": [
+    {
+      "id": "task_example_1",
+      "timestamp": "2025-01-16T13:05:00.000Z",
+      "originalIntent": { "tool": "create_file" },
+      "userMessage": "create a simple todo app",
+      "tasks": [
+        {
+          "id": "setup-project",
+          "content": "Set up HTML structure",
+          "tool": "create_file",
+          "status": "completed",
+          "completedAt": "2025-01-16T13:02:00.000Z"
+        },
+        {
+          "id": "add-styling", 
+          "content": "Add CSS styling",
+          "tool": "create_file",
+          "status": "completed",
+          "completedAt": "2025-01-16T13:03:00.000Z"
+        }
+      ],
+      "totalTasks": 2,
+      "completedTasks": 2,
+      "success": true,
+      "summary": "Completed 2/2 tasks for: create a simple todo app. Successfully: Set up HTML structure, Add CSS styling."
+    }
+  ],
+  "totalTasksCompleted": 2,
+  "toolsCalled": ["create_file", "edit_file"],
+  "goals": ["create simple todo app", "use create_file tool for task completion"],
+  "context": "Session Context (session_example_123456789):\nGoals: create simple todo app, use create_file tool for task completion\nTotal Tasks Completed: 2\n\nRecent Completed Tasks:\n- Completed 2/2 tasks for: create a simple todo app. Successfully: Set up HTML structure, Add CSS styling.\n\nRecent Conversations:\n- User: create a simple todo app...\n- AI: I'll create a todo application with HTML, CSS, and JavaScript...",
+  "lastUpdated": "2025-01-16T13:05:30.000Z"
+}

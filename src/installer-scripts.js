@@ -75,11 +75,12 @@ class OfflineInstaller {
         await this.executeCommand(`chmod +x "${installPath}"`);
       }
 
-      // Add to PATH on Windows
-      if (platform === 'windows') {
-        this.log('🔧 Adding to system PATH...', 'info');
-        await this.executeCommand(`setx PATH "%PATH%;${installDir}"`);
-      }
+      // Add to PATH on macOS
+      this.log('🔧 Adding to shell PATH...', 'info');
+      const shellProfile = this.getShellProfile();
+      const pathLine = `export PATH="${installDir}:$PATH"`;
+      await this.executeCommand(`echo '${pathLine}' >> "${shellProfile}"`);
+      this.log(`✅ Added to ${shellProfile}`, 'success');
 
       // Create models directory
       const modelsDir = this.getModelsDirectory();
@@ -142,8 +143,7 @@ class OfflineInstaller {
   async getBundledModelFiles(modelsPath) {
     try {
       // List .tar files in the models directory
-      const listCommand =
-        process.platform === 'win32' ? `dir "${modelsPath}\\*.tar" /B` : `ls "${modelsPath}"/*.tar`;
+      const listCommand = `ls "${modelsPath}"/*.tar`;
 
       const result = await this.executeCommand(listCommand);
 
@@ -173,52 +173,24 @@ class OfflineInstaller {
   }
 
   detectPlatform() {
-    const platform = process.platform;
-    switch (platform) {
-    case 'win32':
-      return 'windows';
-    case 'darwin':
-      return 'darwin';
-    case 'linux':
-      return 'linux';
-    default:
-      return 'linux';
-    }
+    // Always return darwin for macOS
+    return 'darwin';
   }
 
   getExecutableName(platform) {
-    switch (platform) {
-    case 'windows':
-      return 'ollama.exe';
-    case 'darwin':
-      return 'ollama-mac';
-    case 'linux':
-      return 'ollama-linux';
-    default:
-      return 'ollama-linux';
-    }
+    // Always return ollama for macOS
+    return 'ollama';
   }
 
   getInstallPath(platform) {
-    switch (platform) {
-    case 'windows':
-      return `${process.env.LOCALAPPDATA}\\Programs\\Ollama\\ollama.exe`;
-    case 'darwin':
-      return '/usr/local/bin/ollama';
-    case 'linux':
-      return '/usr/local/bin/ollama';
-    default:
-      return '/usr/local/bin/ollama';
-    }
+    // Install to /usr/local/bin for macOS
+    return '/usr/local/bin/ollama';
   }
 
   getModelsDirectory() {
-    switch (this.detectPlatform()) {
-    case 'windows':
-      return `${process.env.USERPROFILE}\\.ollama\\models`;
-    default:
-      return `${process.env.HOME}/.ollama/models`;
-    }
+    // Always use macOS path
+    const path = require('path');
+    return path.join(process.env.HOME, '.ollama', 'models');
   }
 
   getOllamaModelsDirectory() {
@@ -228,10 +200,7 @@ class OfflineInstaller {
   async fileExists(path) {
     try {
       if (window.electronAPI?.executeCommand) {
-        const command =
-          process.platform === 'win32'
-            ? `if exist "${path}" echo exists`
-            : `test -f "${path}" && echo exists`;
+        const command = `test -f "${path}" && echo exists`;
 
         const result = await window.electronAPI.executeCommand(command);
         return result.success && result.output.includes('exists');
@@ -259,8 +228,7 @@ class OfflineInstaller {
       this.log('🚀 Starting Ollama service...', 'info');
 
       // Start Ollama service in background
-      const startCommand =
-        process.platform === 'win32' ? 'start /B ollama serve' : 'ollama serve &';
+      const startCommand = 'ollama serve &';
 
       await this.executeCommand(startCommand);
 
@@ -340,6 +308,24 @@ class OfflineInstaller {
       return [];
     } catch (error) {
       return [];
+    }
+  }
+
+  getShellProfile() {
+    const path = require('path');
+    const shell = process.env.SHELL || '/bin/bash';
+    const shellName = path.basename(shell);
+    const homeDir = process.env.HOME;
+    
+    switch (shellName) {
+      case 'zsh':
+        return path.join(homeDir, '.zshrc');
+      case 'bash':
+        return path.join(homeDir, '.bash_profile');
+      case 'fish':
+        return path.join(homeDir, '.config', 'fish', 'config.fish');
+      default:
+        return path.join(homeDir, '.profile');
     }
   }
 }
