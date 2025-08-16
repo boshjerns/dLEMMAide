@@ -1173,15 +1173,18 @@ class IDEAIManager {
       this.editor = null;
     }
     
+    // Restore the original ASCII art welcome screen with gradient
     this.editorContainer.innerHTML = `
       <div class="editor-welcome">
-        <div class="welcome-content">
-          <h2>🚀 Mithril AI IDE</h2>
-          <p>Open a file or create a new one to start coding with AI assistance</p>
-          <div class="welcome-actions">
-            <button class="btn-primary" id="welcome-new-file">New File</button>
-            <button class="btn-secondary" id="welcome-open-folder">Open Folder</button>
-          </div>
+        <div class="ascii-logo">
+          <pre class="mithril-ascii">
+███╗   ███╗██╗████████╗██╗  ██╗██████╗ ██╗██╗     
+████╗ ████║██║╚══██╔══╝██║  ██║██╔══██╗██║██║     
+██╔████╔██║██║   ██║   ███████║██████╔╝██║██║     
+██║╚██╔╝██║██║   ██║   ██╔══██║██╔══██╗██║██║     
+██║ ╚═╝ ██║██║   ██║   ██║  ██║██║  ██║██║███████╗
+╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝
+          </pre>
         </div>
       </div>
     `;
@@ -1414,27 +1417,21 @@ class IDEAIManager {
       this.editor = null;
     }
     
+    // Restore the original ASCII art welcome screen with gradient
     this.editorContainer.innerHTML = `
       <div class="editor-welcome">
-        <div class="welcome-content">
-          <h2>🚀 Mithril AI IDE</h2>
-          <p>Open a file or create a new one to start coding with AI assistance</p>
-          <div class="welcome-actions">
-            <button class="btn-primary" id="welcome-new-file">New File</button>
-            <button class="btn-secondary" id="welcome-open-folder">Open Folder</button>
-          </div>
+        <div class="ascii-logo">
+          <pre class="mithril-ascii">
+███╗   ███╗██╗████████╗██╗  ██╗██████╗ ██╗██╗     
+████╗ ████║██║╚══██╔══╝██║  ██║██╔══██╗██║██║     
+██╔████╔██║██║   ██║   ███████║██████╔╝██║██║     
+██║╚██╔╝██║██║   ██║   ██╔══██║██╔══██╗██║██║     
+██║ ╚═╝ ██║██║   ██║   ██║  ██║██║  ██║██║███████╗
+╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝
+          </pre>
         </div>
       </div>
     `;
-    
-    // Re-attach welcome screen event listeners
-    document.getElementById('welcome-new-file')?.addEventListener('click', () => {
-      window.mithrilIDE?.createNewFile();
-    });
-    
-    document.getElementById('welcome-open-folder')?.addEventListener('click', () => {
-      window.mithrilIDE?.openFolder();
-    });
   }
 
   // Right-click context menu for code actions
