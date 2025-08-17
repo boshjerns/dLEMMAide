@@ -432,13 +432,21 @@ ipcMain.handle('fs:deleteFile', async (event, filePath) => {
 
 ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
   try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    console.log('📂 Reading directory:', dirPath);
+    
+    // Normalize path to prevent issues
+    const normalizedPath = path.resolve(dirPath);
+    console.log('📂 Normalized path:', normalizedPath);
+    
+    const entries = await fs.readdir(normalizedPath, { withFileTypes: true });
     const files = entries.map(entry => ({
       name: entry.name,
-      path: path.join(dirPath, entry.name),
+      path: path.join(normalizedPath, entry.name),
       isDirectory: entry.isDirectory(),
       isFile: entry.isFile()
     }));
+    
+    console.log('📂 Found', files.length, 'items in', normalizedPath);
     return files;
   } catch (error) {
     console.error('Failed to read directory:', error);

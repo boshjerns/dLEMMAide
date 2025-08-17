@@ -1621,23 +1621,45 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
     // Clear existing content
     pathDisplay.innerHTML = '';
     
-    // Split the path into segments
-    const parts = this.currentFolder.split(/[\\/]/);
+    // Split the path into segments and filter out empty parts
+    const parts = this.currentFolder.split(/[\\/]/).filter(part => part !== '');
     let currentPath = '';
     
-    parts.forEach((part, index) => {
-      if (!part && index === 0) {
-        // Handle root on Unix-like systems
-        return;
+    // Handle root path first if it's an absolute path
+    if (this.currentFolder.startsWith('/')) {
+      // Add root breadcrumb
+      const rootBreadcrumb = document.createElement('span');
+      rootBreadcrumb.className = 'breadcrumb-item';
+      
+      const rootElement = document.createElement('button');
+      rootElement.className = 'breadcrumb-link';
+      rootElement.textContent = '/';
+      rootElement.title = 'Navigate to root';
+      
+      rootElement.addEventListener('click', async () => {
+        await this.navigateToFolder('/');
+      });
+      
+      rootBreadcrumb.appendChild(rootElement);
+      
+      // Add separator if there are more parts
+      if (parts.length > 0) {
+        const separator = document.createElement('span');
+        separator.className = 'breadcrumb-separator';
+        separator.textContent = '/';
+        rootBreadcrumb.appendChild(separator);
       }
       
-      // Build the current path
-      if (index === 0 && this.currentFolder.startsWith('/')) {
-        currentPath = '/' + part;
-      } else if (index === 0) {
-        currentPath = part;
+      pathDisplay.appendChild(rootBreadcrumb);
+      currentPath = '/';
+    }
+    
+    parts.forEach((part, index) => {
+      // Build the current path correctly
+      if (this.currentFolder.startsWith('/')) {
+        currentPath = currentPath === '/' ? `/${part}` : `${currentPath}/${part}`;
       } else {
-        currentPath = pathUtils.join(currentPath, part);
+        currentPath = index === 0 ? part : `${currentPath}/${part}`;
       }
       
       // Create breadcrumb element
@@ -1647,11 +1669,12 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
       // Create clickable part name
       const partElement = document.createElement('button');
       partElement.className = 'breadcrumb-link';
-      partElement.textContent = part || '/';
+      partElement.textContent = part;
       partElement.title = `Navigate to ${currentPath}`;
       
       const pathToNavigate = currentPath;
       partElement.addEventListener('click', async () => {
+        console.log('🔍 Breadcrumb click - navigating to:', pathToNavigate);
         await this.navigateToFolder(pathToNavigate);
       });
       
@@ -1731,6 +1754,15 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
   async navigateToFolder(folderPath) {
     try {
       console.log('📁 Navigating to folder:', folderPath);
+      
+      // Validate the path exists before navigating
+      const exists = await ipcRenderer.invoke('fs:exists', folderPath);
+      if (!exists || !exists.exists) {
+        console.error('❌ Folder does not exist:', folderPath);
+        this.addChatMessage('ai', `❌ Folder does not exist: ${folderPath}`);
+        return;
+      }
+      
       this.currentFolder = folderPath;
       
       // Save the new path to localStorage
