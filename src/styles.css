@@ -162,11 +162,11 @@ body {
 }
 
 [data-theme="light"] .chat-input-container {
-  background: #ffffff;
-  border-top: 2px solid #000000;
-  box-shadow: none;
+  background: #ffffff !important;
+  border-top: 2px solid #000000 !important;
+  box-shadow: none !important;
   padding: 12px;
-  backdrop-filter: none;
+  backdrop-filter: none !important;
 }
 
 [data-theme="light"] .chat-input-wrapper {
@@ -685,9 +685,251 @@ body {
   border-bottom: 1px solid #000000 !important;
 }
 
-/* Any remaining dark backgrounds */
+/* File tabs - more specific targeting */
+[data-theme="light"] .editor-tabs .tab,
+[data-theme="light"] .file-tab,
+[data-theme="light"] .tab-container .tab {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+  border-bottom: none !important;
+}
+
+[data-theme="light"] .editor-tabs .tab.active,
+[data-theme="light"] .file-tab.active,
+[data-theme="light"] .tab-container .tab.active {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+  border-bottom: none !important;
+}
+
+[data-theme="light"] .editor-tabs .tab:hover,
+[data-theme="light"] .file-tab:hover,
+[data-theme="light"] .tab-container .tab:hover {
+  background: #f5f5f5 !important;
+  color: #000000 !important;
+}
+
+[data-theme="light"] .tab-name,
+[data-theme="light"] .tab-label {
+  color: #000000 !important;
+}
+
+/* Chat message icons - make them black icons */
+[data-theme="light"] .ai-avatar,
+[data-theme="light"] .user-avatar,
+[data-theme="light"] .system-avatar {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .user-avatar {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+}
+
+[data-theme="light"] .ai-avatar {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+}
+
+[data-theme="light"] .system-avatar {
+  background: #666666 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+}
+
+/* Window layout buttons at top */
+[data-theme="light"] .layout-controls,
+[data-theme="light"] .layout-buttons,
+[data-theme="light"] .window-controls {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .layout-btn,
+[data-theme="light"] .layout-button,
+[data-theme="light"] .window-control-btn {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .layout-btn:hover,
+[data-theme="light"] .layout-button:hover,
+[data-theme="light"] .window-control-btn:hover {
+  background: #f0f0f0 !important;
+  color: #000000 !important;
+}
+
+[data-theme="light"] .layout-btn.active,
+[data-theme="light"] .layout-button.active,
+[data-theme="light"] .window-control-btn.active {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Top header/title area */
+[data-theme="light"] .app-header,
+[data-theme="light"] .title-section,
+[data-theme="light"] .header-controls,
+[data-theme="light"] .title-bar,
+[data-theme="light"] .title-bar-center,
+[data-theme="light"] .title-bar-left,
+[data-theme="light"] .title-bar-right {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Ensure all remaining dark backgrounds are caught */
+[data-theme="light"] .dark-bg,
+[data-theme="light"] .bg-dark,
+[data-theme="light"] .dark-theme,
+[data-theme="light"] .dark {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Override any lingering glass or dark effects */
 [data-theme="light"] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   scrollbar-color: #000000 #ffffff !important;
+}
+
+[data-theme="light"] *[style*="background"] {
+  background: #ffffff !important;
+}
+
+/* Very specific tab targeting to override any styles */
+[data-theme="light"] div[class*="tab"]:not([class*="button"]):not([class*="btn"]) {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+}
+
+[data-theme="light"] div[class*="tab"]:not([class*="button"]):not([class*="btn"]).active {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+}
+
+/* Layout controls specific */
+[data-theme="light"] .layout-controls .layout-btn {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+  backdrop-filter: none !important;
+}
+
+[data-theme="light"] .layout-controls .layout-btn.active {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+}
+
+[data-theme="light"] .layout-controls .layout-btn:hover {
+  background: #f0f0f0 !important;
+  color: #000000 !important;
+}
+
+/* Bottom chat area - comprehensive fix */
+[data-theme="light"] .chat-interface,
+[data-theme="light"] .chat-section,
+[data-theme="light"] .chat-container {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+[data-theme="light"] .chat-input-area,
+[data-theme="light"] .input-section,
+[data-theme="light"] .chat-footer,
+[data-theme="light"] .chat-bottom {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+
+/* Context selection area at bottom */
+[data-theme="light"] .context-selection,
+[data-theme="light"] .code-context,
+[data-theme="light"] .selection-info,
+[data-theme="light"] .context-indicator {
+  background: #ffffff !important;
+  color: #666666 !important;
+  border: 1px solid #000000 !important;
+}
+
+/* Chat input wrapper and send button area */
+[data-theme="light"] .send-button-container,
+[data-theme="light"] .input-controls,
+[data-theme="light"] .chat-actions {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Any remaining chat interface elements */
+[data-theme="light"] .chat-interface * {
+  background-color: transparent !important;
+}
+
+[data-theme="light"] .chat-interface {
+  background: #ffffff !important;
+}
+
+/* Specific bottom text styling */
+[data-theme="light"] .context-help,
+[data-theme="light"] .selection-help,
+[data-theme="light"] .help-text {
+  color: #666666 !important;
+  background: #ffffff !important;
+}
+
+/* Chat input area - exact targeting */
+[data-theme="light"] .chat-input-area {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-top: 2px solid #000000 !important;
+}
+
+[data-theme="light"] .input-container {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+[data-theme="light"] .input-hints {
+  background: #ffffff !important;
+  color: #666666 !important;
+  padding: 8px 12px !important;
+}
+
+[data-theme="light"] .hint {
+  color: #666666 !important;
+  background: transparent !important;
+}
+
+[data-theme="light"] .btn-send {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .btn-send:hover {
+  background: #333333 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .btn-send:disabled {
+  background: #cccccc !important;
+  color: #666666 !important;
+  border: 1px solid #999999 !important;
 }
 
 /* IDE Container */
