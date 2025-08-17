@@ -383,6 +383,44 @@ ipcMain.handle('fs:createDirectory', async (event, dirPath) => {
   }
 });
 
+// File existence check
+ipcMain.handle('fs:exists', async (event, filePath) => {
+  try {
+    await fs.access(filePath);
+    return { exists: true };
+  } catch {
+    return { exists: false };
+  }
+});
+
+// Search for a file in a directory
+ipcMain.handle('fs:searchFile', async (event, directory, filename) => {
+  try {
+    const searchRecursive = async (dir) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isFile() && entry.name === filename) {
+          return fullPath;
+        }
+        
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          const found = await searchRecursive(fullPath);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const foundPath = await searchRecursive(directory);
+    return { found: !!foundPath, path: foundPath };
+  } catch (error) {
+    return { found: false, error: error.message };
+  }
+});
+
 ipcMain.handle('fs:deleteFile', async (event, filePath) => {
   try {
     await fs.unlink(filePath);

@@ -41,7 +41,7 @@ class TodoListManager {
         /make.*.*app.*in.*react/i,
         /create.*.*app.*in.*react/i,
         /build.*.*app.*in.*react/i,
-        /calendar.*app/i,
+
         /todo.*app/i,
         /chat.*app/i,
         /blog.*app/i,
@@ -183,10 +183,9 @@ class TodoListManager {
     
     let todos = [];
 
-    // Handle different types of complex requests
-    if (userMessage.toLowerCase().includes('calendar app')) {
-      todos = this.generateCalendarAppTodos(userMessage);
-    } else if (intent?.tool === 'create_file' || userMessage.toLowerCase().includes('react app')) {
+    // Handle different types of complex requests - all dynamically
+    // Remove hardcoded calendar app detection
+    if (intent?.tool === 'create_file' || userMessage.toLowerCase().includes('react app')) {
       todos = this.generateReactAppTodos(userMessage);
     } else if (userMessage.toLowerCase().includes('website') || userMessage.toLowerCase().includes('web app')) {
       todos = this.generateWebsiteTodos(userMessage);
@@ -209,63 +208,7 @@ class TodoListManager {
     return todos;
   }
 
-  /**
-   * Generate todos for Calendar application creation
-   */
-  generateCalendarAppTodos(message) {
-    const todos = [
-      {
-        id: 'setup-calendar-project',
-        content: 'Set up React project structure for calendar app',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-calendar-html',
-        content: 'Create index.html with calendar app shell',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-calendar-component',
-        content: 'Create main Calendar component with grid layout',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-date-logic',
-        content: 'Implement date calculation and navigation logic',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-event-system',
-        content: 'Create event creation and management system',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-calendar-styling',
-        content: 'Create CSS styles for calendar app with modern design',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-interactivity',
-        content: 'Add event handlers and user interactions',
-        tool: 'edit_file',
-        status: 'pending'
-      },
-      {
-        id: 'test-calendar-app',
-        content: 'Test calendar functionality and fix any issues',
-        tool: 'chat_response',
-        status: 'pending'
-      }
-    ];
-
-    return todos;
-  }
+  // Removed hardcoded calendar app todos - now using dynamic generation
 
   /**
    * Generate todos for React application creation
@@ -612,9 +555,9 @@ class TodoListManager {
       console.log('🧠 Saved completed tasks to memory');
     }
     
-    // Add completion message to chat
+    // Add generic completion message to chat
     if (this.ideCore && this.ideCore.addChatMessage) {
-      this.ideCore.addChatMessage('ai', '🎉 All tasks completed! Your calendar app is ready to use. Open index.html in a browser to see it in action!');
+      this.ideCore.addChatMessage('ai', '🎉 All tasks completed! Your requested files/project have been created successfully.');
     }
     
     // Show completion message

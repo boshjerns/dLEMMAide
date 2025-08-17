@@ -723,17 +723,8 @@ Tool selection rules:
           return await this.editSelectedText(context.selectedTextInfo, userMessage);
         }
         
-        // Try to extract filename from message if no current file
-        let fileToEdit = currentFile;
-        if (!currentFile || currentFile.length === 0) {
-          const filenameMatch = userMessage.match(/(?:File\s+")([^"]+\.[a-zA-Z0-9]+)(?:")|([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i);
-          if (filenameMatch) {
-            fileToEdit = filenameMatch[1] || filenameMatch[2];
-            console.log('🔧 Detected file edit request for:', fileToEdit);
-          }
-        }
-        
-        return await this.editFile(fileToEdit, userMessage, userMessage);
+        // Use smart file edit workflow for better file identification and editing
+        return await this.executeSmartFileEdit(userMessage, 'edit');
         
       case 'create_file':
         return await this.executeFileCreation(userMessage);
@@ -773,22 +764,8 @@ Tool selection rules:
           console.log('🔧 Executing fix_issues with chunk replacement');
           return await this.executeChunkAction('fix', targetChunk, userMessage);
         }
-        if (!selectedText) {
-          // Check if the message contains a file path or filename for file-based fixing
-          const filenameMatch = userMessage.match(/(?:File\s+")([^"]+\.[a-zA-Z0-9]+)(?:")|([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/i);
-          if (filenameMatch) {
-            const extractedFilename = filenameMatch[1] || filenameMatch[2];
-            console.log('🔧 Detected file-based fix request for:', extractedFilename);
-            return await this.editFile(extractedFilename, userMessage, userMessage);
-          }
-          // No selection - check if we can fix the entire file
-          if (currentFile) {
-            console.log('🔧 No selection, attempting to fix entire file');
-            return await this.editFile(currentFile, userMessage, userMessage);
-          }
-          return 'Please select some code to fix or open a file.';
-        }
-        return await this.fixIssues(selectedText, userMessage);
+        // For fix_issues, we need to properly identify and read the file first
+        return await this.executeSmartFileEdit(userMessage, 'fix');
         
       case 'optimize_code':
         if (targetChunk) {
@@ -1233,6 +1210,130 @@ Please reference these code chunks in your response when relevant. You can refer
       try { this.currentAIRequest.cancel(); } catch (e) { /* ignore */ }
     }
     this.isProcessing = false;
+  }
+
+  // Smart file edit workflow that identifies, reads, and edits files properly
+  async executeSmartFileEdit(userMessage, editType = 'edit') {
+    console.log('🔍 ==================== SMART FILE EDIT ====================');
+    console.log('🔍 User request:', userMessage);
+    console.log('🔍 Edit type:', editType);
+    
+    try {
+      // Step 1: Identify the file
+      let targetFile = null;
+      
+      // Check if a file is currently open
+      const currentFile = this.ideAIManager?.getCurrentFilePath();
+      
+      // Try to extract filename from the message
+      const filenameMatch = userMessage.match(/([a-zA-Z0-9_-]+\.[a-zA-Z0-9]+)/);
+      const mentionedFile = filenameMatch ? filenameMatch[1] : null;
+      
+      if (mentionedFile) {
+        console.log('🔍 File mentioned in request:', mentionedFile);
+        
+        // Search for the file in the workspace
+        if (this.currentFolder) {
+          const searchResult = await ipcRenderer.invoke('fs:searchFile', this.currentFolder, mentionedFile);
+          if (searchResult.found) {
+            targetFile = searchResult.path;
+            console.log('🔍 Found file at:', targetFile);
+          } else {
+            // Try to find it in common locations
+            const possiblePaths = [
+              pathUtils.join(this.currentFolder, mentionedFile),
+              pathUtils.join(this.currentFolder, 'src', mentionedFile),
+              pathUtils.join(this.currentFolder, '..', mentionedFile),
+              `/Users/bosh/Downloads/temp-large-files-backup/${mentionedFile}`
+            ];
+            
+            for (const path of possiblePaths) {
+              const checkResult = await ipcRenderer.invoke('fs:exists', path);
+              if (checkResult.exists) {
+                targetFile = path;
+                console.log('🔍 Found file at:', targetFile);
+                break;
+              }
+            }
+          }
+        }
+      } else if (currentFile) {
+        targetFile = currentFile;
+        console.log('🔍 Using currently open file:', targetFile);
+      }
+      
+      if (!targetFile) {
+        return '❌ Could not identify which file to edit. Please specify the filename or open the file first.';
+      }
+      
+      // Step 2: Read the file content
+      console.log('📖 Reading file content...');
+      const readResult = await ipcRenderer.invoke('fs:readFile', targetFile);
+      if (!readResult.success) {
+        return `❌ Error reading file: ${readResult.error}`;
+      }
+      
+      const originalContent = readResult.content;
+      console.log('📖 File content length:', originalContent.length);
+      
+      // Step 3: Analyze what needs to be edited
+      const analysisPrompt = `Analyze this file and the user's request to determine what needs to be ${editType === 'fix' ? 'fixed' : 'edited'}.
+
+File: ${pathUtils.basename(targetFile)}
+File content:
+${originalContent}
+
+User request: "${userMessage}"
+
+Identify:
+1. What specific issues or changes are needed
+2. Which lines need to be modified
+3. Whether the entire file needs rewriting or just specific sections
+
+Respond with a brief analysis.`;
+      
+      console.log('🔍 Analyzing file for required changes...');
+      const analysis = await this.generateWithModel(this.selectedModel, analysisPrompt, 'You are a code analysis expert.');
+      console.log('🔍 Analysis complete');
+      
+      // Step 4: Generate the edited content
+      const editPrompt = `${editType === 'fix' ? 'Fix the issues in' : 'Edit'} this file according to the user's request.
+
+File: ${pathUtils.basename(targetFile)}
+Original content:
+${originalContent}
+
+User request: "${userMessage}"
+
+Analysis: ${analysis}
+
+Return ONLY the complete, corrected file content. No explanations, no markdown, just the raw file content.`;
+      
+      const editSystemPrompt = `You are a code editor. ${editType === 'fix' ? 'Fix issues in' : 'Edit'} the file and return ONLY the complete file content.`;
+      
+      console.log('✏️ Generating edited content...');
+      
+      // Open the file in editor if not already open
+      if (!currentFile || currentFile !== targetFile) {
+        await this.openFile(targetFile);
+      }
+      
+      // Stream the edited content directly to the editor
+      const streamResult = await this.streamContentToEditor(targetFile, editPrompt, editSystemPrompt);
+      
+      if (streamResult.success) {
+        // Save the edited content to disk
+        await ipcRenderer.invoke('fs:writeFile', targetFile, streamResult.content);
+        console.log('✅ File successfully edited and saved');
+        return `✅ Successfully ${editType === 'fix' ? 'fixed' : 'edited'} ${pathUtils.basename(targetFile)}`;
+      } else {
+        return `❌ Error editing file: ${streamResult.error}`;
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in smart file edit:', error);
+      return `❌ Error: ${error.message}`;
+    }
   }
 
   // Stream content directly to the editor without showing in chat
