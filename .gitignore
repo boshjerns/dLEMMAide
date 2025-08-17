@@ -76,4 +76,5 @@ coverage/
 .vscode-test
 
 # Electron-builder output
-/dist_electron/ 
+/dist_electron/ test-workspace/
+test_linter_completion.html

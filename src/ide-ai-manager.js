@@ -9,7 +9,16 @@ class IDEAIManager {
     this.editor = null;
     this.openFiles = new Map();
     this.currentFile = null;
-    this.currentTheme = 'material-darker';
+    
+    // Get the saved theme and map it to CodeMirror theme
+    const savedTheme = localStorage.getItem('ide-theme') || 'default';
+    if (savedTheme === 'light') {
+      this.currentTheme = 'default'; // CodeMirror's light theme
+    } else if (savedTheme === 'default') {
+      this.currentTheme = 'material-darker'; // Use material-darker for our default dark theme
+    } else {
+      this.currentTheme = savedTheme; // Use as-is for material-darker
+    }
     
     // Selection tracking
     this.selectedText = null;
@@ -45,6 +54,9 @@ class IDEAIManager {
     // Linting Manager
     this.lintingManager = null;
     
+    // Autocomplete Manager
+    this.autocompleteManager = null;
+    
     this.init();
   }
 
@@ -65,6 +77,10 @@ class IDEAIManager {
     console.log('🔍 Initializing linting manager...');
     this.initializeLinting();
     console.log('✅ Linting manager ready');
+    
+    console.log('🤖 Initializing autocomplete manager...');
+    this.initializeAutocomplete();
+    console.log('✅ Autocomplete manager ready');
     
     console.log('✅ IDE AI Manager initialized');
     } catch (error) {
@@ -285,6 +301,12 @@ class IDEAIManager {
     // Enable linting for this editor
     this.enableLintingForEditor(fileInfo.mode);
     
+    // Initialize autocomplete for this editor
+    if (this.autocompleteManager) {
+      this.autocompleteManager.initializeForEditor(this.editor);
+      console.log('🤖 Autocomplete enabled for editor');
+    }
+    
     // Force CodeMirror to take full size
     this.editor.setSize('100%', '100%');
     console.log('✅ CodeMirror editor created successfully');
@@ -378,6 +400,21 @@ class IDEAIManager {
       }
     } catch (error) {
       console.error('🔍 Failed to initialize linting manager:', error);
+    }
+  }
+
+  // Initialize autocomplete capabilities
+  initializeAutocomplete() {
+    try {
+      // Check if autocomplete module is available
+      if (typeof IDEAutocomplete !== 'undefined') {
+        this.autocompleteManager = new IDEAutocomplete(this, this.ideCore);
+        console.log('🤖 Autocomplete manager initialized successfully');
+      } else {
+        console.warn('🤖 IDEAutocomplete not available - autocomplete disabled');
+      }
+    } catch (error) {
+      console.error('🤖 Failed to initialize autocomplete manager:', error);
     }
   }
 
@@ -1304,8 +1341,16 @@ class IDEAIManager {
   changeTheme(theme) {
     this.currentTheme = theme;
     if (this.editor) {
-      this.editor.setOption('theme', theme);
-      console.log(`🎨 CodeMirror theme set to: ${theme}`);
+      // Map IDE themes to CodeMirror themes
+      let cmTheme = theme;
+      if (theme === 'light') {
+        cmTheme = 'default'; // CodeMirror's light theme
+      } else if (theme === 'default') {
+        cmTheme = 'material-darker'; // Use material-darker for our default dark theme
+      }
+      
+      this.editor.setOption('theme', cmTheme);
+      console.log(`🎨 CodeMirror theme set to: ${cmTheme} (IDE theme: ${theme})`);
     }
   }
 

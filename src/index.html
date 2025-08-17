@@ -69,15 +69,20 @@
           <div class="sidebar-header">
             <h3>Explorer</h3>
             <div class="explorer-buttons">
+              <button class="btn-open-folder" id="open-folder-btn" title="Open Folder">
+                <i data-lucide="folder-open"></i>
+              </button>
+              <button class="btn-parent-folder" id="parent-folder-btn" title="Go Up One Level">
+                <i data-lucide="arrow-up"></i>
+              </button>
+              <div class="button-separator"></div>
               <button class="btn-new-file" id="new-file-btn" title="New File">
                 <i data-lucide="file-plus"></i>
               </button>
               <button class="btn-new-folder" id="new-folder-btn" title="New Folder">
                 <i data-lucide="folder-plus"></i>
               </button>
-              <button class="btn-open-folder" id="open-folder-btn" title="Open Folder">
-                <i data-lucide="folder-open"></i>
-              </button>
+              <div class="button-separator"></div>
               <button class="btn-setup" id="setup-btn" title="Air-gapped Setup">
                 <i data-lucide="settings"></i>
               </button>
@@ -86,6 +91,7 @@
               </button>
             </div>
           </div>
+          <div class="folder-path" id="current-path-display"></div>
           <div class="file-tree" id="file-tree">
             <div class="empty-state">
               <p>No folder open</p>
@@ -211,8 +217,14 @@
             <span>AI Assistant</span>
           </div>
           <div class="chat-model-selector">
-            <label for="model-selector">Model:</label>
+            <label for="model-selector">Chat Model:</label>
             <select id="model-selector" class="model-dropdown">
+              <option value="">Loading models...</option>
+            </select>
+          </div>
+          <div class="chat-model-selector">
+            <label for="completion-model-selector">Completion Model:</label>
+            <select id="completion-model-selector" class="model-dropdown">
               <option value="">Loading models...</option>
             </select>
           </div>
@@ -302,14 +314,11 @@
           </div>
           <div class="settings-body">
             <div class="settings-group">
-              <label>Editor Theme:</label>
+              <label>IDE Theme:</label>
               <select id="theme-selector">
+                <option value="default">Dark (Default)</option>
+                <option value="light">Light</option>
                 <option value="material-darker">Material Darker</option>
-                <option value="monokai">Monokai</option>
-                <option value="dracula">Dracula</option>
-                <option value="solarized dark">Solarized Dark</option>
-                <option value="base16-dark">Base16 Dark</option>
-                <option value="default">Light Theme</option>
               </select>
             </div>
             <div class="settings-group">
@@ -399,6 +408,7 @@
     <script src="cli-tools.js"></script>
     <script src="ide-linting-manager.js"></script>
     <script src="ide-terminal-manager.js"></script>
+    <script src="ide-autocomplete.js"></script>
     <script src="ide-ai-manager.js"></script>
     <script src="todo-manager.js"></script>
     <script src="todo-execution-methods.js"></script>

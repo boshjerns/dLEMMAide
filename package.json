@@ -34,6 +34,7 @@
     "bootstrap": "^5.3.7",
     "chokidar": "^3.6.0",
     "csslint": "^1.0.5",
+    "electron-store": "^10.1.0",
     "eslint": "^9.31.0",
     "highlight.js": "^11.9.0",
     "htmlhint": "^1.6.3",

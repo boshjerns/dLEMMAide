@@ -11,6 +11,23 @@ const pathUtils = {
   basename: (filePath) => {
     return filePath.split(/[\\/]/).pop() || '';
   },
+  dirname: (filePath) => {
+    // Normalize the path separators
+    const normalized = filePath.replace(/[\\\/]+/g, '/');
+    const parts = normalized.split('/');
+    
+    // Remove the last part (filename or last directory)
+    parts.pop();
+    
+    // If nothing left, return root
+    if (parts.length === 0) return '/';
+    
+    // Rejoin the parts
+    const result = parts.join('/');
+    
+    // Preserve the leading slash for absolute paths
+    return result || '/';
+  },
   extname: (filePath) => {
     const fileName = pathUtils.basename(filePath);
     const lastDot = fileName.lastIndexOf('.');
@@ -67,6 +84,7 @@ class MithrilAIIDE {
     this.currentFolder = null;
     this.availableModels = [];
     this.selectedModel = null;
+    this.completionModel = 'starcoder2:3b'; // StarCoder2 for better code completion
     this.isProcessing = false;
     this.currentAIRequest = null; // Track current AI request for cancellation
     this.openingFile = false;
@@ -143,6 +161,23 @@ class MithrilAIIDE {
     }
   }
 
+  // Load saved theme from localStorage
+  loadSavedTheme() {
+    const savedTheme = localStorage.getItem('ide-theme') || 'default';
+    
+    // Apply theme to body
+    document.body.setAttribute('data-theme', savedTheme);
+    
+    // Update theme selector if it exists
+    const themeSelector = document.getElementById('theme-selector');
+    if (themeSelector) {
+      themeSelector.value = savedTheme;
+    }
+    
+    // Store the current theme
+    this.currentTheme = savedTheme;
+  }
+
   async init() {
     try {
       console.log('🚀 Initializing Mithril AI IDE...');
@@ -157,6 +192,14 @@ class MithrilAIIDE {
       // Load token settings from localStorage
       this.loadTokenSettings();
       console.log('💾 Token settings loaded');
+      
+      // Load saved theme
+      this.loadSavedTheme();
+      console.log('🎨 Theme loaded');
+      
+      // Auto-load last workspace
+      await this.loadLastWorkspace();
+      console.log('📁 Last workspace loaded');
       
       // Initialize IDE AI Manager
       this.ideAIManager = new IDEAIManager(this);
@@ -187,6 +230,11 @@ class MithrilAIIDE {
     }
   }
 
+  // Get the current completion model
+  getCompletionModel() {
+    return this.completionModel || 'codegemma:2b';
+  }
+
   // Model Management
   async loadModels() {
     console.log('📋 ==================== MODEL LOADING START ====================');
@@ -215,7 +263,7 @@ class MithrilAIIDE {
       
       // Auto-select preferred model (qwen2.5-coder:3b) or first available
       if (this.availableModels.length > 0) {
-        // Try to find qwen2.5-coder:3b first
+        // Try to find qwen2.5-coder:3b first for chat
         const preferredModel = this.availableModels.find(model => 
           model.name === 'qwen2.5-coder:3b' || 
           model.name.includes('qwen2.5-coder:3b') ||
@@ -229,9 +277,32 @@ class MithrilAIIDE {
         this.models.tool = selectedModelName;
         this.models.synthesis = selectedModelName;
         
-        console.log('📋 Auto-selected model:', this.selectedModel);
+        // Try to find StarCoder2 for completion, then CodeGemma, then fallback
+        const starcoderModel = this.availableModels.find(model => 
+          model.name === 'starcoder2:3b' || 
+          model.name.includes('starcoder2')
+        );
+        
+        const codegemmaModel = this.availableModels.find(model => 
+          model.name === 'codegemma:2b' || 
+          model.name.includes('codegemma')
+        );
+        
+        if (starcoderModel) {
+          this.completionModel = starcoderModel.name;
+          console.log('✅ Using StarCoder2 for code completion:', this.completionModel);
+        } else if (codegemmaModel) {
+          this.completionModel = codegemmaModel.name;
+          console.log('✅ Using CodeGemma for code completion:', this.completionModel);
+        } else {
+          // Fallback to main model for completion
+          this.completionModel = selectedModelName;
+          console.log('⚠️ StarCoder2/CodeGemma not found, using main model for completion:', this.completionModel);
+        }
+        
+        console.log('📋 Auto-selected chat model:', this.selectedModel);
         if (preferredModel) {
-          console.log('✅ Using preferred qwen 3b model');
+          console.log('✅ Using preferred qwen 3b model for chat');
         } else {
           console.log('⚠️ qwen 3b not found, using first available model');
         }
@@ -299,6 +370,11 @@ class MithrilAIIDE {
     document.getElementById('open-folder-btn')?.addEventListener('click', () => {
       console.log('📂 Open folder button clicked');
       this.openFolder();
+    });
+    
+    document.getElementById('parent-folder-btn')?.addEventListener('click', () => {
+      console.log('⬆️ Parent folder button clicked');
+      this.navigateToParentFolder();
     });
     
     document.getElementById('open-workspace-btn')?.addEventListener('click', () => {
@@ -1498,6 +1574,10 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
       console.log('📁 Selected folder path:', this.currentFolder);
       console.log('📁 Folder name:', pathUtils.basename(this.currentFolder));
       
+      // Save the workspace path to localStorage
+      localStorage.setItem('last-workspace', this.currentFolder);
+      console.log('💾 Saved workspace to localStorage');
+      
       console.log('📂 Loading file tree...');
       await this.loadFileTree();
       
@@ -1525,9 +1605,142 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
       const files = await ipcRenderer.invoke('fs:readDirectory', this.currentFolder);
       console.log('📁 Files loaded:', files.length, 'items');
       this.renderFileTree(files);
+      
+      // Update the breadcrumb navigation
+      this.updateBreadcrumbNavigation();
     } catch (error) {
       console.error('❌ Failed to load file tree:', error);
       this.addChatMessage('ai', `Error loading folder contents: ${error.message}`);
+    }
+  }
+
+  updateBreadcrumbNavigation() {
+    const pathDisplay = document.getElementById('current-path-display');
+    if (!pathDisplay || !this.currentFolder) return;
+    
+    // Clear existing content
+    pathDisplay.innerHTML = '';
+    
+    // Split the path into segments
+    const parts = this.currentFolder.split(/[\\/]/);
+    let currentPath = '';
+    
+    parts.forEach((part, index) => {
+      if (!part && index === 0) {
+        // Handle root on Unix-like systems
+        return;
+      }
+      
+      // Build the current path
+      if (index === 0 && this.currentFolder.startsWith('/')) {
+        currentPath = '/' + part;
+      } else if (index === 0) {
+        currentPath = part;
+      } else {
+        currentPath = pathUtils.join(currentPath, part);
+      }
+      
+      // Create breadcrumb element
+      const breadcrumb = document.createElement('span');
+      breadcrumb.className = 'breadcrumb-item';
+      
+      // Create clickable part name
+      const partElement = document.createElement('button');
+      partElement.className = 'breadcrumb-link';
+      partElement.textContent = part || '/';
+      partElement.title = `Navigate to ${currentPath}`;
+      
+      const pathToNavigate = currentPath;
+      partElement.addEventListener('click', async () => {
+        await this.navigateToFolder(pathToNavigate);
+      });
+      
+      breadcrumb.appendChild(partElement);
+      
+      // Add separator (except for last item)
+      if (index < parts.length - 1) {
+        const separator = document.createElement('span');
+        separator.className = 'breadcrumb-separator';
+        separator.textContent = '/';
+        breadcrumb.appendChild(separator);
+      }
+      
+      pathDisplay.appendChild(breadcrumb);
+    });
+  }
+
+  async loadLastWorkspace() {
+    try {
+      const lastWorkspace = localStorage.getItem('last-workspace');
+      if (lastWorkspace) {
+        console.log('📁 Found last workspace:', lastWorkspace);
+        
+        // Check if the folder still exists
+        const result = await ipcRenderer.invoke('fs:exists', lastWorkspace);
+        if (result && result.exists) {
+          this.currentFolder = lastWorkspace;
+          console.log('📂 Loading last workspace:', this.currentFolder);
+          await this.loadFileTree();
+          this.addChatMessage('ai', `📁 Restored workspace: ${pathUtils.basename(this.currentFolder)}`);
+        } else {
+          console.log('⚠️ Last workspace no longer exists:', lastWorkspace);
+          localStorage.removeItem('last-workspace');
+          
+          // Clear the path display
+          const pathDisplay = document.getElementById('current-path-display');
+          if (pathDisplay) {
+            pathDisplay.innerHTML = '';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to load last workspace:', error);
+    }
+  }
+
+  async navigateToParentFolder() {
+    if (!this.currentFolder) {
+      console.log('⚠️ No current folder to navigate from');
+      return;
+    }
+
+    try {
+      const parentPath = pathUtils.dirname(this.currentFolder);
+      
+      // Don't go beyond the root
+      if (parentPath === this.currentFolder) {
+        console.log('⚠️ Already at root folder');
+        this.addChatMessage('ai', '⚠️ Already at root folder');
+        return;
+      }
+
+      console.log('📁 Navigating to parent folder:', parentPath);
+      this.currentFolder = parentPath;
+      
+      // Save the new path to localStorage
+      localStorage.setItem('last-workspace', this.currentFolder);
+      
+      await this.loadFileTree();
+      this.addChatMessage('ai', `📁 Navigated to: ${pathUtils.basename(this.currentFolder) || '/'}`);
+    } catch (error) {
+      console.error('❌ Failed to navigate to parent folder:', error);
+      this.addChatMessage('ai', `Error navigating to parent folder: ${error.message}`);
+    }
+  }
+
+  async navigateToFolder(folderPath) {
+    try {
+      console.log('📁 Navigating to folder:', folderPath);
+      this.currentFolder = folderPath;
+      
+      // Save the new path to localStorage
+      localStorage.setItem('last-workspace', this.currentFolder);
+      
+      await this.loadFileTree();
+      this.addChatMessage('ai', `📁 Opened folder: ${pathUtils.basename(this.currentFolder)}`);
+    } catch (error) {
+      console.error('❌ Failed to navigate to folder:', error);
+      this.addChatMessage('ai', `Error opening folder: ${error.message}`);
     }
   }
 
@@ -1560,6 +1773,7 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
         const isExpanded = this.expandedFolders.has(file.path);
         icon.textContent = isExpanded ? '📂' : '📁';
         
+        // Single click to expand/collapse
         item.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -1567,7 +1781,15 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
           await this.toggleFolder(file.path, item);
         });
         
-        item.title = `Click to ${isExpanded ? 'collapse' : 'expand'} ${file.name}`;
+        // Double click to navigate into folder
+        item.addEventListener('dblclick', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('📁 Folder double-clicked, navigating to:', file.path);
+          await this.navigateToFolder(file.path);
+        });
+        
+        item.title = `Click to ${isExpanded ? 'collapse' : 'expand'}, double-click to open ${file.name}`;
       } else {
         icon.textContent = '📄';
         item.addEventListener('click', (e) => {
@@ -1708,8 +1930,85 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
   }
 
   async createNewFile() {
-    if (this.ideAIManager) {
-      await this.ideAIManager.createNewFile('untitled.txt', '// New file\n');
+    console.log('📄 Creating new file...');
+    
+    if (!this.currentFolder) {
+      console.log('⚠️ No workspace folder open');
+      this.addChatMessage('ai', 'Please open a workspace folder first.');
+      return;
+    }
+
+    try {
+      // First verify the folder exists
+      const folderExists = await ipcRenderer.invoke('fs:exists', this.currentFolder);
+      if (!folderExists || !folderExists.exists) {
+        console.error('❌ Workspace folder no longer exists:', this.currentFolder);
+        this.addChatMessage('ai', '❌ The workspace folder no longer exists. Please open a valid folder.');
+        this.currentFolder = null;
+        localStorage.removeItem('last-workspace');
+        
+        // Clear the path display
+        const pathDisplay = document.getElementById('current-path-display');
+        if (pathDisplay) {
+          pathDisplay.textContent = '';
+        }
+        
+        // Clear the file tree
+        const fileTree = document.getElementById('file-tree');
+        if (fileTree) {
+          fileTree.innerHTML = '<div class="empty-state"><p>No folder open</p><button class="btn-primary" id="open-workspace-btn">Open Folder</button></div>';
+          // Re-attach event handler
+          document.getElementById('open-workspace-btn')?.addEventListener('click', () => {
+            this.openFolder();
+          });
+        }
+        return;
+      }
+
+      // Generate a unique filename
+      let filename = 'untitled.txt';
+      let counter = 1;
+      let filePath = pathUtils.join(this.currentFolder, filename);
+      
+      console.log('📝 Checking for existing files...');
+      
+      // Check if file exists and generate unique name
+      let existsResult = await ipcRenderer.invoke('fs:exists', filePath);
+      while (existsResult && existsResult.exists) {
+        filename = `untitled${counter}.txt`;
+        filePath = pathUtils.join(this.currentFolder, filename);
+        counter++;
+        existsResult = await ipcRenderer.invoke('fs:exists', filePath);
+      }
+      
+      console.log('📝 Creating file at:', filePath);
+      
+      // Create the file with initial content
+      const result = await ipcRenderer.invoke('fs:writeFile', filePath, '// New file\n');
+      
+      console.log('📝 Write result:', JSON.stringify(result));
+      
+      if (result && result.success) {
+        console.log('✅ File created successfully');
+        
+        // Refresh the file tree
+        await this.loadFileTree();
+        
+        // Small delay to ensure file system has caught up
+        setTimeout(async () => {
+          // Open the newly created file
+          await this.openFile(filePath);
+        }, 100);
+        
+        this.addChatMessage('ai', `📄 Created new file: ${filename}`);
+      } else {
+        const errorMsg = result ? result.error : 'Unknown error';
+        console.error('❌ Failed to create file:', errorMsg);
+        this.addChatMessage('ai', `Error creating file: ${errorMsg}`);
+      }
+    } catch (error) {
+      console.error('❌ Error creating new file:', error);
+      this.addChatMessage('ai', `Error creating file: ${error.message}`);
     }
   }
 
@@ -3153,18 +3452,25 @@ User request: ${userMessage}`;
   }
 
   toggleTheme() {
-    if (this.ideAIManager?.currentTheme === 'material-darker') {
-      this.changeTheme('default');
-    } else {
-      this.changeTheme('material-darker');
-    }
+    const currentTheme = document.body.getAttribute('data-theme') || 'default';
+    const themes = ['default', 'light', 'material-darker'];
+    const currentIndex = themes.indexOf(currentTheme);
+    const nextIndex = (currentIndex + 1) % themes.length;
+    this.changeTheme(themes[nextIndex]);
   }
 
   changeTheme(theme) {
+    // Apply theme to the entire IDE interface
+    document.body.setAttribute('data-theme', theme);
+    
+    // Apply theme to CodeMirror editor
     if (this.ideAIManager) {
       this.ideAIManager.changeTheme(theme);
-      console.log(`🎨 Theme changed to: ${theme}`);
     }
+    
+    // Save theme preference
+    localStorage.setItem('ide-theme', theme);
+    console.log(`🎨 Theme changed to: ${theme}`);
   }
 
   changeFontSize(size) {
@@ -3235,42 +3541,82 @@ User request: ${userMessage}`;
   // Model Management Methods
   updateModelSelector() {
     console.log('🔄 ==================== UPDATING MODEL SELECTOR ====================');
-    const selector = document.getElementById('model-selector');
-    if (!selector) {
-      console.warn('⚠️ Model selector element not found');
-      return;
-    }
-
-    // Clear existing options
-    selector.innerHTML = '';
-
-    if (this.availableModels.length === 0) {
-      console.log('🔄 No models available, showing error option');
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'No models available';
-      option.disabled = true;
-      selector.appendChild(option);
-      return;
-    }
-
-    console.log('🔄 Adding model options to selector');
-    this.availableModels.forEach((model, index) => {
-      const option = document.createElement('option');
-      option.value = model.name;
-      option.textContent = model.name;
+    const chatSelector = document.getElementById('model-selector');
+    const completionSelector = document.getElementById('completion-model-selector');
+    
+    // Update chat model selector
+    if (chatSelector) {
+      chatSelector.innerHTML = '';
       
-      // Select the current model
-      if (model.name === this.selectedModel) {
-        option.selected = true;
-        console.log('🔄 Selected option:', model.name);
+      if (this.availableModels.length === 0) {
+        console.log('🔄 No models available, showing error option');
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No models available';
+        option.disabled = true;
+        chatSelector.appendChild(option);
+      } else {
+        console.log('🔄 Adding chat model options to selector');
+        this.availableModels.forEach((model, index) => {
+          const option = document.createElement('option');
+          option.value = model.name;
+          option.textContent = model.name;
+          
+          // Select the current model
+          if (model.name === this.selectedModel) {
+            option.selected = true;
+            console.log('🔄 Selected chat option:', model.name);
+          }
+          
+          chatSelector.appendChild(option);
+          console.log(`🔄 Added chat model option ${index + 1}: ${model.name}`);
+        });
       }
+    }
+    
+    // Update completion model selector
+    if (completionSelector) {
+      completionSelector.innerHTML = '';
       
-      selector.appendChild(option);
-      console.log(`🔄 Added model option ${index + 1}: ${model.name}`);
-    });
+      if (this.availableModels.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No models available';
+        option.disabled = true;
+        completionSelector.appendChild(option);
+      } else {
+        console.log('🔄 Adding completion model options to selector');
+        this.availableModels.forEach((model, index) => {
+          const option = document.createElement('option');
+          option.value = model.name;
+          option.textContent = model.name;
+          
+          // Select the current completion model
+          if (model.name === this.completionModel) {
+            option.selected = true;
+            console.log('🔄 Selected completion option:', model.name);
+          }
+          
+          completionSelector.appendChild(option);
+        });
+        
+        // Add change listener for completion model
+        if (!completionSelector.hasAttribute('data-listener-added')) {
+          completionSelector.setAttribute('data-listener-added', 'true');
+          completionSelector.addEventListener('change', (e) => {
+            this.completionModel = e.target.value;
+            console.log('🔄 Completion model changed to:', this.completionModel);
+            
+            // Update autocomplete manager if it exists
+            if (this.aiManager && this.aiManager.autocompleteManager) {
+              this.aiManager.autocompleteManager.setCompletionModel(this.completionModel);
+            }
+          });
+        }
+      }
+    }
 
-    console.log('✅ Model selector updated successfully');
+    console.log('✅ Model selectors updated successfully');
   }
 
   selectModel(modelName) {

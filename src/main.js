@@ -512,11 +512,13 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
         prompt: options.prompt,
         stream: true,
         options: {
-          temperature: 0.7,
-          top_p: 0.9,
-          top_k: 40,
+          temperature: options.temperature !== undefined ? options.temperature : 0.7,
+          top_p: options.topP !== undefined ? options.topP : 0.9,
+          top_k: options.topK !== undefined ? options.topK : 40,
           num_ctx: options.contextTokens || 32768,
-          num_predict: options.maxTokens || 4096
+          num_predict: options.maxTokens || 4096,
+          repeat_penalty: options.repeatPenalty !== undefined ? options.repeatPenalty : 1.1,
+          stop: options.stopSequences || []
         }
       }),
       signal: controller.signal
@@ -586,6 +588,9 @@ ipcMain.handle('ollama:cancelStream', async (event) => {
     return { success: false, error: String(err) };
   }
 });
+
+// Note: Code completion uses the existing ollama:generateStream handler
+// The renderer can call it directly with appropriate parameters for fast completion
 
 // Bash Integration for macOS
 ipcMain.handle('bash:execute', async (event, command) => {
