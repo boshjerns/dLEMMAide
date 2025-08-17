@@ -15,15 +15,17 @@ if (typeof MithrilAIIDE !== 'undefined') {
     try {
       switch (intent.tool) {
         case 'create_file':
-          // For todo-driven file creation, be more specific
+          // For todo-driven file creation, prefer dynamic generator
           if (todoMessage.toLowerCase().includes('project structure')) {
             return await this.createProjectStructure(todoMessage);
           } else if (todoMessage.toLowerCase().includes('html')) {
             return await this.createHTMLFile(todoMessage);
           } else if (todoMessage.toLowerCase().includes('component')) {
-            return await this.createComponentFile(todoMessage);
+            // Route component creation to dynamic content generation
+            return await this.executeFileCreation(todoMessage);
           } else if (todoMessage.toLowerCase().includes('css') || todoMessage.toLowerCase().includes('styles') || todoMessage.toLowerCase().includes('styling')) {
-            return await this.createCalendarStyles();
+            // Route styles creation to dynamic content generation
+            return await this.executeFileCreation(todoMessage);
           } else {
             return await this.executeFileCreation(todoMessage);
           }
@@ -50,28 +52,20 @@ if (typeof MithrilAIIDE !== 'undefined') {
   MithrilAIIDE.prototype.createProjectStructure = async function(message) {
     console.log('⚙️ Creating project structure for:', message);
     
-    let projectType = 'react-app';
-    if (message.toLowerCase().includes('calendar')) {
-      projectType = 'calendar-app';
-    }
+    let projectType = 'app';
     
     const packageJson = {
       name: projectType,
       version: "1.0.0",
-      description: `A React ${projectType.replace('-', ' ')}`,
+      description: `Scaffold for ${projectType.replace('-', ' ')}`,
       main: "index.js",
       scripts: {
         start: "npx serve .",
         build: "echo 'Build completed'",
         test: "echo 'Tests passed'"
       },
-      dependencies: {
-        react: "^18.2.0",
-        "react-dom": "^18.2.0"
-      },
-      devDependencies: {
-        serve: "^14.0.0"
-      }
+      dependencies: {},
+      devDependencies: {}
     };
 
     try {
@@ -89,11 +83,7 @@ if (typeof MithrilAIIDE !== 'undefined') {
   MithrilAIIDE.prototype.createHTMLFile = async function(message) {
     console.log('⚙️ Creating HTML file for:', message);
     
-    let appTitle = 'React App';
-    
-    if (message.toLowerCase().includes('calendar')) {
-      appTitle = 'Calendar App';
-    }
+    let appTitle = 'App';
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -101,14 +91,11 @@ if (typeof MithrilAIIDE !== 'undefined') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${appTitle}</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel" src="app.js"></script>
+    <div id="app"></div>
+    <script src="app.js"></script>
 </body>
 </html>`;
 
@@ -127,16 +114,14 @@ if (typeof MithrilAIIDE !== 'undefined') {
   MithrilAIIDE.prototype.createComponentFile = async function(message) {
     console.log('⚙️ Creating component file for:', message);
     
-    if (message.toLowerCase().includes('calendar')) {
-      return await this.createCalendarComponent();
-    } else {
-      return await this.createGenericComponent(message);
-    }
+    // Always route to dynamic generator to avoid hard-coded components
+    return await this.executeFileCreation(message);
   };
 
   /**
    * Create calendar component
    */
+  // Deprecated: remove calendar-specific component generation in favor of dynamic creation
   MithrilAIIDE.prototype.createCalendarComponent = async function() {
     const calendarCode = `const { useState } = React;
 
@@ -224,7 +209,7 @@ function Calendar() {
 
 function App() {
     return React.createElement('div', { className: 'app' },
-        React.createElement('h1', {}, '📅 Calendar App'),
+        React.createElement('h1', {}, 'App'),
         React.createElement(Calendar)
     );
 }
@@ -232,19 +217,18 @@ function App() {
 ReactDOM.render(React.createElement(App), document.getElementById('root'));`;
 
     try {
-      const result = await this.createFile('app.js', calendarCode, 'Creating calendar component');
-      this.addChatMessage('ai', '✅ Created Calendar component with date navigation and event management');
-      return result;
+      return await this.executeFileCreation('Create a calendar UI component (dynamic)');
     } catch (error) {
       return `Error creating calendar component: ${error.message}`;
     }
   };
 
   /**
-   * Create CSS styles for calendar app
+   * Create CSS styles for app
    */
+  // Deprecated: remove calendar-specific styles in favor of dynamic creation
   MithrilAIIDE.prototype.createCalendarStyles = async function() {
-    const cssContent = `/* Calendar App Styles */
+    const cssContent = `/* App Styles */
 * {
     margin: 0;
     padding: 0;
@@ -420,9 +404,7 @@ body {
 }`;
 
     try {
-      const result = await this.createFile('styles.css', cssContent, 'Creating CSS styles');
-      this.addChatMessage('ai', '✅ Created beautiful CSS styles for calendar app');
-      return result;
+      return await this.executeFileCreation('Create CSS styles for the generated UI');
     } catch (error) {
       return `Error creating styles: ${error.message}`;
     }

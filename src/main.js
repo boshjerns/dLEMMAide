@@ -15,6 +15,7 @@ const platformUtils = require('./platform-utils');
 
 let mainWindow;
 let setupWindow;
+const activeStreams = new Map(); // webContentsId -> AbortController
 
 // Create main window
 function createWindow() {
@@ -457,7 +458,12 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
     console.log('🌊 Starting streaming generation with Ollama');
     console.log('🌊 Model:', options.model);
     console.log('🌊 Prompt length:', options.prompt.length);
+    console.log('🌊 Stream ID:', options.streamId);
     
+    const controller = new AbortController();
+    const webContentsId = event.sender.id;
+    activeStreams.set(webContentsId, controller);
+
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: {
@@ -474,7 +480,8 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
           num_ctx: options.contextTokens || 32768,
           num_predict: options.maxTokens || 4096
         }
-      })
+      }),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -501,7 +508,7 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
              const data = JSON.parse(line);
              
              // Send chunk to renderer
-             event.sender.send('ollama:streamChunk', data);
+             event.sender.send('ollama:streamChunk', { ...data, streamId: options.streamId });
              
              if (data.done) {
                console.log('🌊 Stream completed');
@@ -514,12 +521,31 @@ ipcMain.handle('ollama:generateStream', async (event, options) => {
       }
     } finally {
       reader.releaseLock();
+      activeStreams.delete(webContentsId);
     }
     
   } catch (error) {
     console.error('❌ Ollama streaming failed:', error);
-    event.sender.send('ollama:streamError', error.message);
+    event.sender.send('ollama:streamError', { message: error.message, streamId: options?.streamId });
     throw error;
+  }
+});
+
+// Allow renderer to cancel the current Ollama stream immediately
+ipcMain.handle('ollama:cancelStream', async (event) => {
+  try {
+    const webContentsId = event.sender.id;
+    const controller = activeStreams.get(webContentsId);
+    if (controller) {
+      controller.abort();
+      activeStreams.delete(webContentsId);
+      console.log('🛑 Ollama stream aborted for webContents', webContentsId);
+      return { success: true, aborted: true };
+    }
+    return { success: true, aborted: false };
+  } catch (err) {
+    console.error('❌ Failed to cancel Ollama stream:', err);
+    return { success: false, error: String(err) };
   }
 });
 

@@ -1107,12 +1107,16 @@ Please reference these code chunks in your response when relevant. You can refer
       const contextTokens = contextTokensInput ? parseInt(contextTokensInput.value) || 32768 : 32768;
       const maxTokens = maxTokensInput ? parseInt(maxTokensInput.value) || 4096 : 4096;
       
+      // Create a unique stream ID to correlate chunks
+      const streamId = 'stream_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+
       const requestPayload = {
         model: modelName,
         prompt: fullPrompt,
         stream: true,
         contextTokens: contextTokens,
-        maxTokens: maxTokens
+        maxTokens: maxTokens,
+        streamId
       };
       
       console.log('🤖 Request payload:', JSON.stringify(requestPayload, null, 2));
@@ -1121,11 +1125,14 @@ Please reference these code chunks in your response when relevant. You can refer
       return new Promise((resolve, reject) => {
         let fullResponse = '';
         let currentMessageElement = null;
+        let isCanceled = false;
         
         // Create a streaming message in chat
         currentMessageElement = this.addStreamingChatMessage('ai', '');
         
         const handleStreamData = (data) => {
+          if (isCanceled) return;
+          if (data.streamId && data.streamId !== streamId) return; // Ignore chunks from previous streams
           if (data.response) {
             fullResponse += data.response;
             
@@ -1192,6 +1199,19 @@ Please reference these code chunks in your response when relevant. You can refer
             ipcRenderer.removeListener('ollama:streamChunk', streamChunkHandler);
             ipcRenderer.removeListener('ollama:streamError', streamErrorHandler);
           });
+
+        // Store cancel function so UI (trash) can abort the stream
+        this.currentAIRequest = {
+          cancel: async () => {
+            try {
+              isCanceled = true;
+              await ipcRenderer.invoke('ollama:cancelStream');
+            } catch (e) {
+              console.warn('Cancel stream error:', e);
+            }
+          },
+          streamId
+        };
       });
       
     } catch (error) {
@@ -1203,6 +1223,154 @@ Please reference these code chunks in your response when relevant. You can refer
       console.error('❌ Prompt that failed:', fullPrompt.substring(0, 500) + '...');
       
       throw new Error(`Model generation failed: ${error.message}`);
+    }
+  }
+
+  // Cancel any ongoing AI/streaming work
+  cancelOngoingProcessing() {
+    if (this.currentAIRequest && typeof this.currentAIRequest.cancel === 'function') {
+      console.log('🛑 Cancelling current AI request');
+      try { this.currentAIRequest.cancel(); } catch (e) { /* ignore */ }
+    }
+    this.isProcessing = false;
+  }
+
+  // Stream content directly to the editor without showing in chat
+  async streamContentToEditor(filePath, prompt, systemPrompt) {
+    console.log('🌊 ==================== STREAMING TO EDITOR ====================');
+    console.log('🌊 Target file:', filePath);
+    
+    try {
+      // Get the editor instance for this file
+      const editor = this.ideAIManager?.editor;
+      if (!editor) {
+        console.error('❌ No editor available');
+        return { success: false, error: 'Editor not available' };
+      }
+      
+      // Create a unique stream ID
+      const streamId = 'editor_stream_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+      
+      // Get token settings
+      const contextTokens = 32768;
+      const maxTokens = 4096;
+      
+      const fullPrompt = `${systemPrompt}\n\nUser: ${prompt}`;
+      
+      const requestPayload = {
+        model: this.selectedModel,
+        prompt: fullPrompt,
+        stream: true,
+        contextTokens,
+        maxTokens,
+        streamId
+      };
+      
+      return new Promise((resolve) => {
+        let fullContent = '';
+        let isCanceled = false;
+        let lineBuffer = '';
+        let updatePending = false;
+        
+        const handleStreamData = (data) => {
+          if (isCanceled) return;
+          if (data.streamId && data.streamId !== streamId) return;
+          
+          if (data.response) {
+            // Accumulate the response
+            fullContent += data.response;
+            lineBuffer += data.response;
+            
+            // Update editor in batches to avoid excessive updates
+            if (!updatePending) {
+              updatePending = true;
+              requestAnimationFrame(() => {
+                if (editor && !isCanceled) {
+                  // Clean the content before setting in editor
+                  let cleanedContent = fullContent
+                    .replace(/^```[\w]*\n?/gm, '') // Remove code block markers
+                    .replace(/```$/gm, '')
+                    .replace(/^(Here's|Here is|Below is|This is).*$/im, '')
+                    .replace(/^(The code|The file|File content).*$/im, '')
+                    .trim();
+                  
+                  // Set the content in the editor
+                  editor.setValue(cleanedContent);
+                  
+                  // Move cursor to end
+                  const lastLine = editor.lastLine();
+                  editor.setCursor({ line: lastLine, ch: editor.getLine(lastLine).length });
+                }
+                updatePending = false;
+              });
+            }
+          }
+          
+          if (data.done) {
+            console.log('🌊 Stream to editor completed');
+            
+            // Final content cleaning
+            let finalContent = fullContent
+              .replace(/^```[\w]*\n?/gm, '')
+              .replace(/```$/gm, '')
+              .replace(/^(Here's|Here is|Below is|This is).*$/im, '')
+              .replace(/^(The code|The file|File content).*$/im, '')
+              .replace(/^\*\*.*?\*\*$/gm, '')
+              .replace(/^#{1,6}\s.*$/gm, '')
+              .trim();
+            
+            // Set final content in editor
+            if (editor) {
+              editor.setValue(finalContent);
+            }
+            
+            resolve({ success: true, content: finalContent });
+          }
+        };
+        
+        const handleStreamError = (error) => {
+          console.error('❌ Editor streaming error:', error);
+          resolve({ success: false, error: error.message || 'Stream failed' });
+        };
+        
+        // Set up stream event listeners
+        const streamChunkHandler = (event, data) => {
+          handleStreamData(data);
+        };
+        
+        const streamErrorHandler = (event, error) => {
+          handleStreamError(new Error(error));
+        };
+        
+        ipcRenderer.on('ollama:streamChunk', streamChunkHandler);
+        ipcRenderer.on('ollama:streamError', streamErrorHandler);
+        
+        // Start streaming
+        ipcRenderer.invoke('ollama:generateStream', requestPayload)
+          .catch(handleStreamError)
+          .finally(() => {
+            // Clean up event listeners
+            ipcRenderer.removeListener('ollama:streamChunk', streamChunkHandler);
+            ipcRenderer.removeListener('ollama:streamError', streamErrorHandler);
+          });
+        
+        // Store cancel function
+        this.currentAIRequest = {
+          cancel: async () => {
+            try {
+              isCanceled = true;
+              await ipcRenderer.invoke('ollama:cancelStream');
+            } catch (e) {
+              console.warn('Cancel stream error:', e);
+            }
+          },
+          streamId
+        };
+      });
+      
+    } catch (error) {
+      console.error('❌ Error in editor streaming:', error);
+      return { success: false, error: error.message };
     }
   }
 
@@ -1845,6 +2013,24 @@ Please reference these code chunks in your response when relevant. You can refer
       console.log('🗑️ Chat messages cleared');
     }
     
+    // Critically: cancel any active Ollama stream to prevent old chunks from arriving
+    try {
+      if (this.currentAIRequest && typeof this.currentAIRequest.cancel === 'function') {
+        // cancel() may be async; handle both sync/async
+        const maybePromise = this.currentAIRequest.cancel();
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.catch(() => {});
+        }
+      } else if (ipcRenderer?.invoke) {
+        // Fire-and-forget cancel to main process
+        ipcRenderer.invoke('ollama:cancelStream').catch(() => {});
+      }
+    } catch (e) {
+      console.warn('🔌 Failed to cancel stream on clear:', e);
+    }
+    this.currentAIRequest = null;
+    this.isProcessing = false;
+
     // Clear history and start new session
     if (this.ideAIManager) {
       this.ideAIManager.clearHistory();
@@ -2470,8 +2656,8 @@ Please reference these code chunks in your response when relevant. You can refer
 User request: "${userMessage}"
 
 Respond with ONLY the filename (no path, no explanations). Examples:
-- "---.html" for web pages
-- "-alculator.py" for Python apps  
+- "index.html" for web pages
+- "calculator.py" for Python apps  
 - "styles.css" for stylesheets
 - "flappy-bird.py" for games
 - "todo-app.js" for JavaScript apps
@@ -2533,57 +2719,43 @@ Raw file content:`;
 
       const contentSystemPrompt = `You are a code generator. Create complete, functional file content based on the user request. Return ONLY the raw file content without any explanations or formatting.`;
       
-      console.log('📝 Step 2: Generating file content...');
-      const contentResponse = await this.generateWithModel(this.selectedModel, contentPrompt, contentSystemPrompt);
+      console.log('📝 Step 2: Creating file and streaming content directly to editor...');
       
-      // Extract clean content - handle both raw content and code blocks
-      let cleanContent = this.extractCodeFromResponse(contentResponse);
+      // Create the file immediately with empty content
+      const currentPath = this.currentFolder;
+      if (!currentPath) {
+        console.error('❌ No working folder set');
+        return '❌ No workspace folder selected. Please open a folder first.';
+      }
       
-      if (!cleanContent || !cleanContent.trim()) {
-        // No code blocks found, assume the entire response is the raw content
-        cleanContent = contentResponse;
-        console.log('📝 Using entire response as file content (no code blocks found)');
+      const newFilePath = pathUtils.join(currentPath, fileName);
+      console.log('📝 Creating file at:', newFilePath);
+      
+      // Create empty file first
+      const createResult = await ipcRenderer.invoke('fs:writeFile', newFilePath, '');
+      if (!createResult.success) {
+        console.error('❌ Failed to create file:', createResult.error);
+        return `❌ Error creating file: ${createResult.error}`;
+      }
+      
+      // Refresh file tree immediately
+      this.loadFileTree();
+      
+      // Open the file in the editor immediately
+      await this.openFile(newFilePath);
+      
+      // Now stream content directly to the editor
+      console.log('📝 Streaming content to editor...');
+      const streamResult = await this.streamContentToEditor(newFilePath, contentPrompt, contentSystemPrompt);
+      
+      if (streamResult.success) {
+        // Save the final content to disk
+        await ipcRenderer.invoke('fs:writeFile', newFilePath, streamResult.content);
+        console.log('✅ File creation and streaming complete');
+        return `📝 Created and populated file: ${fileName}`;
       } else {
-        console.log('📝 Extracted content from code blocks');
+        return `❌ Error generating content: ${streamResult.error}`;
       }
-      
-      // Additional cleaning for file creation specifically
-      cleanContent = cleanContent
-        .replace(/^(Here's|Here is|Below is|This is).*$/im, '') // Remove intro lines
-        .replace(/^(The code|The file|File content).*$/im, '') // Remove description lines
-        .replace(/^\*\*.*?\*\*$/gm, '') // Remove bold headers
-        .replace(/^#{1,6}\s.*$/gm, '') // Remove markdown headers
-        .replace(/^>\s.*$/gm, '') // Remove blockquotes
-        .replace(/^-{3,}$/gm, '') // Remove horizontal rules
-        .replace(/^File:.*$/gm, '') // Remove file labels
-        .trim();
-      
-      // Apply final artifact cleaning (including triple backticks)
-      cleanContent = this.cleanCodeArtifacts(cleanContent);
-      console.log('🧹 Applied final artifact cleaning to file content');
-      
-      // Validate content
-      if (!cleanContent || cleanContent.trim().length === 0) {
-        console.error('❌ No valid content generated for file');
-        return '❌ Error: Could not generate file content. Please try again.';
-      }
-      
-      console.log('📝 Generated content length:', cleanContent.length);
-      console.log('📝 Content preview:', cleanContent.substring(0, 200) + '...');
-      
-      // Create the file
-      const result = await this.createFile(fileName, cleanContent, userMessage);
-      
-      // Open the created file in the editor if creation was successful
-      if (result && result.includes('📝 Created file') && this.ideAIManager) {
-        setTimeout(() => {
-          // Create full path for opening
-          const fullPath = pathUtils.join(this.currentFolder || '.', fileName);
-          this.openFile(fullPath);
-        }, 700);
-      }
-      
-      return result;
       
     } catch (error) {
       console.error('❌ Error in file creation:', error);
@@ -4360,15 +4532,11 @@ Explain what this code does, how it works, and any important concepts. Provide a
     try {
       switch (intent.tool) {
         case 'create_file':
-          // For todo-driven file creation, be more specific
+          // Prefer dynamic creation for all content types
           if (todoMessage.toLowerCase().includes('project structure')) {
             return await this.createProjectStructure(todoMessage);
           } else if (todoMessage.toLowerCase().includes('html')) {
             return await this.createHTMLFile(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('component')) {
-            return await this.createComponentFile(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('css') || todoMessage.toLowerCase().includes('styles') || todoMessage.toLowerCase().includes('styling')) {
-            return await this.createCalendarStyles();
           } else {
             return await this.executeFileCreation(todoMessage);
           }
@@ -4395,32 +4563,24 @@ Explain what this code does, how it works, and any important concepts. Provide a
   async createProjectStructure(message) {
     console.log('⚙️ Creating project structure for:', message);
     
-    let projectType = 'react-app';
-    if (message.toLowerCase().includes('calendar')) {
-      projectType = 'calendar-app';
-    }
+    let projectType = 'app';
     
     const packageJson = {
       name: projectType,
       version: "1.0.0",
-      description: `A React ${projectType.replace('-', ' ')}`,
+      description: `Scaffold for ${projectType.replace('-', ' ')}`,
       main: "index.js",
       scripts: {
         start: "npx serve .",
         build: "echo 'Build completed'",
         test: "echo 'Tests passed'"
       },
-      dependencies: {
-        react: "^18.2.0",
-        "react-dom": "^18.2.0"
-      },
-      devDependencies: {
-        serve: "^14.0.0"
-      }
+      dependencies: {},
+      devDependencies: {}
     };
 
     try {
-      const result = await this.createFile('package.json', JSON.stringify(packageJson, null, 2), 'Creating package.json for calendar app');
+      const result = await this.createFile('package.json', JSON.stringify(packageJson, null, 2), 'Creating package.json for project');
       this.addChatMessage('ai', `✅ Created package.json for ${projectType}`);
       return result;
     } catch (error) {
@@ -4434,11 +4594,7 @@ Explain what this code does, how it works, and any important concepts. Provide a
   async createHTMLFile(message) {
     console.log('⚙️ Creating HTML file for:', message);
     
-    let appTitle = 'React App';
-    
-    if (message.toLowerCase().includes('calendar')) {
-      appTitle = 'Calendar App';
-    }
+    let appTitle = 'App';
 
     const htmlContent = `<!DOCTYPE html>
 <html lang="en">
@@ -4446,19 +4602,16 @@ Explain what this code does, how it works, and any important concepts. Provide a
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${appTitle}</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel" src="app.js"></script>
+    <div id="app"></div>
+    <script src="app.js"></script>
 </body>
 </html>`;
 
     try {
-      const result = await this.createFile('index.html', htmlContent, 'Creating index.html for calendar app');
+      const result = await this.createFile('index.html', htmlContent, 'Creating index.html for app');
       this.addChatMessage('ai', `✅ Created index.html for ${appTitle}`);
       return result;
     } catch (error) {
@@ -4472,16 +4625,14 @@ Explain what this code does, how it works, and any important concepts. Provide a
   async createComponentFile(message) {
     console.log('⚙️ Creating component file for:', message);
     
-    if (message.toLowerCase().includes('calendar')) {
-      return await this.createCalendarComponent();
-    } else {
-      return await this.createGenericComponent(message);
-    }
+    // Route to dynamic generator to avoid hard-coded components
+    return await this.executeFileCreation(message);
   }
 
   /**
    * Create calendar component
    */
+  // Deprecated: replace calendar-specific generator with dynamic creation
   async createCalendarComponent() {
     const calendarCode = `const { useState } = React;
 
@@ -4569,7 +4720,7 @@ function Calendar() {
 
 function App() {
     return React.createElement('div', { className: 'app' },
-        React.createElement('h1', {}, '📅 Calendar App'),
+        React.createElement('h1', {}, 'App'),
         React.createElement(Calendar)
     );
 }
@@ -4577,19 +4728,18 @@ function App() {
 ReactDOM.render(React.createElement(App), document.getElementById('root'));`;
 
     try {
-      const result = await this.createFile('app.js', calendarCode, 'Creating calendar React component');
-      this.addChatMessage('ai', '✅ Created Calendar component with date navigation and event management');
-      return result;
+      return await this.executeFileCreation('Create a calendar UI component (dynamic)');
     } catch (error) {
       return `Error creating calendar component: ${error.message}`;
     }
   }
 
   /**
-   * Create CSS styles for calendar app
+   * Create CSS styles for app
    */
+  // Deprecated: replace calendar-specific styles with dynamic creation
   async createCalendarStyles() {
-    const cssContent = `/* Calendar App Styles */
+    const cssContent = `/* App Styles */
 * {
     margin: 0;
     padding: 0;
@@ -4765,9 +4915,7 @@ body {
 }`;
 
     try {
-      const result = await this.createFile('styles.css', cssContent, 'Creating CSS styles for calendar app');
-      this.addChatMessage('ai', '✅ Created beautiful CSS styles for calendar app');
-      return result;
+      return await this.executeFileCreation('Create CSS styles for the generated UI');
     } catch (error) {
       return `Error creating styles: ${error.message}`;
     }
