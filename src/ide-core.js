@@ -791,6 +791,30 @@ Tool selection rules:
         return await this.runCommand(userMessage, intent);
         
       case 'edit_file':
+        // If the instruction actually asks to create a new file, route to file creation
+        try {
+          const createLike = /(?:create|add).*file/i.test(userMessage);
+          const explicitFileMatch = userMessage.match(/['"]([^'"\n]+\.[a-zA-Z0-9]+)['"]/);
+          if (createLike || explicitFileMatch) {
+            if (explicitFileMatch && this.currentFolder) {
+              const possiblePath = pathUtils.join(this.currentFolder, explicitFileMatch[1]);
+              const parentDir = pathUtils.dirname(possiblePath);
+              const exists = await ipcRenderer.invoke('fs:exists', possiblePath);
+              if (!exists.exists) {
+                // Ensure parent directory exists before creation
+                await ipcRenderer.invoke('fs:createDirectory', parentDir);
+                return await this.executeFileCreation(userMessage);
+              }
+            }
+            // Fall back to smart creation if not explicit path
+            if (createLike) {
+              return await this.executeFileCreation(userMessage);
+            }
+          }
+        } catch (e) {
+          console.warn('edit_file pre-check for creation failed:', e?.message);
+        }
+
         if (targetChunk) {
           // Direct editing with chunk replacement
           console.log('🔧 Executing edit_file with chunk replacement');
