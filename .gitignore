@@ -78,3 +78,12 @@ coverage/
 # Electron-builder output
 /dist_electron/ test-workspace/
 test_linter_completion.html
+
+# Logo and image files (keep locally but exclude from git)
+*.png
+*.ico
+*.icns
+deilemmaIDElogo.png
+logoM.png
+logoM.ico
+logoM.icns
