@@ -1,280 +1,171 @@
-# 🚀 Mithril AI IDE v2.0 (macOS Edition)
+# dLEMMA IDE
 
-**Revolutionary AI-First Code Editor for macOS** - A complete transformation from chat-based to IDE-native AI interaction, optimized for Apple Silicon and Intel Macs.
+A local-first AI development environment designed for secure, offline coding with small language models.
 
-## ✨ What's New in V2.0
+Created by Josh Berns
 
-This is a **complete architectural redesign** that transforms Mithril from a "chat app with code editing" into a true **AI-native IDE** like Cursor or GitHub Copilot, but powered by your local Ollama models.
+## Overview
 
-### 🎯 Core Philosophy Change
+dLEMMA IDE is an experimental development environment that explores the intersection of agentic coding capabilities and data privacy. The project demonstrates how small, locally-run language models can provide sophisticated coding assistance without requiring cloud connectivity or exposing sensitive code to external services.
 
-**Before (V1):** Chat → AI → Maybe edit code  
-**After (V2):** Code → AI → Direct IDE manipulation
+The core philosophy behind dLEMMA IDE is addressing the developer's dilemma: the need for powerful AI-assisted coding while maintaining complete control over code and data privacy. This system is built specifically to leverage small language models efficiently, proving that effective agentic coding doesn't require massive computational resources.
 
-## 🏗️ Architecture Overview
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                 MITHRIL AI IDE V2                       │
-├─────────────────────────────────────────────────────────┤
-│  📁 File Explorer (Left)    │  🖥️ CodeMirror Editor    │
-│  - Direct file opening      │  - Real-time AI editing   │
-│  - Context-aware selection  │  - Selection highlighting  │
-│  - AI file operations       │  - Streaming code changes │
-├─────────────────────────────────────────────────────────┤
-│                💬 Embedded AI Chat                     │
-│  Context-aware prompts • Selection-based actions        │
-└─────────────────────────────────────────────────────────┘
-```
+The IDE implements a multi-layered architecture where each component handles specific aspects of the development workflow:
 
-## 🔥 Revolutionary Features
+### System Components
 
-### 1. **AI-Native Code Editing**
-- **Real-time streaming edits** - Watch AI type code directly into your editor
-- **Selection-based AI actions** - Select code → Right-click → AI transforms it
-- **Context-aware AI** - AI always knows what file you're in and what's selected
-- **Visual edit feedback** - See exactly what the AI is changing with highlights
+**Electron Main Process**: Manages the application lifecycle, window creation, and system-level operations. Handles file system access and native OS integration.
 
-### 2. **3-Step Simplified Workflow**
-```
-Intent Detection → IDE Action → Memory & Summary
-     ↓               ↓              ↓
-  "What to do?"  Direct code    "Here's what I did"
-                 manipulation
-```
+**IDE Core**: The central orchestrator that manages the editor state, file operations, and coordinates between different subsystems. It maintains the workspace context and handles user interactions.
 
-### 3. **Professional IDE Experience**
-- **CodeMirror Integration** - Professional syntax highlighting, line numbers, code folding
-- **File Tab Management** - Multiple files open with dirty state tracking
-- **Keyboard Shortcuts** - Ctrl+S save, Ctrl+E explain selection, Ctrl+R refactor
-- **Find & Replace** - Full search functionality built-in
-- **Theme Support** - Material Darker theme with proper dark UI
+**AI Manager**: Interfaces with Ollama for local LLM integration. Manages conversation context, streaming responses, and translates user intent into executable actions.
 
-### 4. **Selection-Based AI Actions**
-- **Explain Code** - Select code and get instant explanations
-- **Refactor** - AI rewrites selected code for better quality
-- **Fix Issues** - AI identifies and fixes bugs in selection
-- **Optimize** - Performance improvements for selected code
+**Todo Manager**: Breaks down complex user requests into actionable steps. Maintains execution state and orchestrates multi-step workflows.
 
-### 5. **Instant Performance**
-- **No tab switching delays** - Everything loads instantly
-- **GPU accelerated** - Smooth animations and rendering
-- **Optimized DOM** - Minimal reflows and repaints
-- **Cached operations** - File operations and AI responses cached
+**Terminal Manager**: Provides integrated terminal functionality with proper working directory management. Executes commands in the context of the current workspace.
 
-## 🎨 User Experience
+**Dependency Manager**: Analyzes project structure and manages package dependencies. Provides intelligent suggestions for missing imports and packages.
 
-### Visual Feedback System
-- 🟢 **Green highlights** for AI additions
-- 🔵 **Blue highlights** for AI-selected areas  
-- 🟡 **Yellow highlights** for modifications
-- ⚡ **Real-time progress** indicators
+**Linting Manager**: Integrates with language-specific linters to provide real-time code quality feedback.
 
-### Context Awareness
-- AI always knows your **current file**
-- AI always knows your **selected text**
-- AI always knows your **working directory**
-- **Smart filename extraction** from natural language
+## Agentic Flow
 
-## 🛠️ Technical Implementation
+The system implements a sophisticated agentic workflow that transforms natural language requests into concrete development actions:
 
-### Core Components
-
-#### 1. **MithrilAIIDE** (`ide-core.js`)
-- Main application controller
-- 3-step AI workflow orchestration
-- Model management and selection
-- Context aggregation and state management
-
-#### 2. **IDEAIManager** (`ide-ai-manager.js`)
-- CodeMirror integration and management
-- Selection tracking and highlighting
-- Real-time editing engine
-- File tab management and operations
-
-#### 3. **AI Integration**
-- **Intent Detection** - Understands what you want to do
-- **Tool Execution** - Performs direct IDE actions
-- **Memory & Synthesis** - Remembers and summarizes actions
-
-### File Architecture
-```
-mithril-ide-v2/
-├── src/
-│   ├── index.html          # IDE-first HTML structure
-│   ├── styles.css          # Professional dark theme
-│   ├── main.js             # Electron main process
-│   ├── ide-core.js         # Core AI IDE logic
-│   ├── ide-ai-manager.js   # CodeMirror + AI integration
-│   ├── cli-tools.js        # CLI integration (inherited)
-│   └── dependency-manager.js # Package management
-├── package.json            # Project configuration
-└── README.md              # This file
+```mermaid
+graph TD
+    A[User Input] --> B[Intent Analysis]
+    B --> C{Complex Task?}
+    C -->|Yes| D[Todo Generation]
+    C -->|No| E[Direct Execution]
+    
+    D --> F[Task Decomposition]
+    F --> G[Step 1: Analyze Requirements]
+    G --> H[Step 2: Generate Files]
+    H --> I[Step 3: Create Content]
+    I --> J[Step 4: Save & Validate]
+    
+    E --> K[Single Action]
+    
+    J --> L[Auto-Save Mechanism]
+    K --> L
+    
+    L --> M[Editor Update]
+    M --> N[File System Sync]
+    
+    B --> O[Context Management]
+    O --> P[Conversation History]
+    O --> Q[Workspace State]
+    O --> R[File Context]
+    
+    P --> S[AI Content Generation]
+    Q --> S
+    R --> S
+    
+    S --> T{File Type}
+    T -->|Code| U[Syntax-Aware Generation]
+    T -->|Config| V[Schema Validation]
+    T -->|Documentation| W[Markdown Generation]
+    
+    U --> X[Stream to Editor]
+    V --> X
+    W --> X
+    
+    X --> Y[Real-time Display]
+    Y --> L
 ```
 
-## 🚀 Quick Start
+### Key Agentic Capabilities
 
-### Prerequisites (macOS)
-- **macOS 10.14+** (Mojave or later)
-- **Node.js** (v16+) - Will be bundled if not available
-- **Ollama** - Will be automatically installed via Homebrew or manual download
+**Intent Recognition**: The system analyzes user input to determine whether the request requires simple file operations or complex multi-step workflows.
 
-### Installation
-```bash
-cd MITHRILMACv1
-npm install
-npm start
-```
+**Dynamic Task Decomposition**: Complex requests are automatically broken down into discrete, executable steps. Each step maintains context from previous operations.
 
-### Building for macOS
-```bash
-# For Intel Macs
-npm run pack-mac
+**Context-Aware Generation**: The AI maintains conversation history and workspace context to generate relevant, project-specific code. This ensures generated content aligns with existing project structure and conventions.
 
-# For Apple Silicon Macs  
-npm run pack-mac-arm
+**Streaming Integration**: AI responses stream directly into the editor, providing immediate visual feedback while maintaining file system synchronization.
 
-# For distribution (creates DMG)
-npm run build:mac
-```
+**Auto-Save Pipeline**: A multi-tiered save system ensures no data loss:
+- Immediate saves after AI content generation
+- Delayed saves for user edits (2-second debounce)
+- Memory cache for unsaved files
+- File system sync on tab switches
 
-### First Launch
-1. **Setup wizard** - Follow the automated Ollama and model installation
-2. **Open a folder** - Click "Open Folder" to set your workspace  
-3. **Select code** - Highlight any code and see AI context hints
-4. **Chat with AI** - Ask questions about your code
-5. **Watch magic happen** - AI edits code directly in your IDE
+## Technical Implementation
 
-### macOS-Specific Features
-- **Homebrew integration** - Automatically installs Ollama via brew
-- **Native shell support** - Uses zsh/bash instead of PowerShell
-- **macOS paths** - Follows Apple's directory conventions (~/.ollama)
-- **App bundle support** - Proper .app structure with .icns icon
+### Local LLM Integration
 
-## 🎯 AI Tools Available
+The system uses Ollama to run language models locally, ensuring complete data privacy. Communication happens through HTTP endpoints with streaming support for real-time content generation.
 
-| Tool | Trigger | Description |
-|------|---------|-------------|
-| **Chat Response** | Questions | General coding help and guidance |
-| **Edit File** | "Change this...", "Update..." | Direct file modifications |
-| **Create File** | "Create a...", "Make a..." | New file with generated content |
-| **Analyze Code** | "Analyze...", "Review..." | Code quality assessment |
-| **Explain Code** | "Explain...", Selection + Ctrl+E | Step-by-step code explanation |
-| **Refactor Code** | "Refactor...", Selection + Ctrl+R | Code improvement suggestions |
-| **Fix Issues** | "Fix...", Selection + Ctrl+Alt+F | Bug detection and fixes |
-| **Optimize Code** | "Optimize...", Selection + Ctrl+Alt+O | Performance improvements |
+### File Management
 
-## ⌨️ Keyboard Shortcuts
+Files are managed through a dual-state system:
+- In-memory representation for unsaved changes
+- File system persistence for saved content
+- Automatic synchronization between states
 
-| Shortcut | Action |
-|----------|---------|
-| `Ctrl+S` / `Cmd+S` | Save current file |
-| `Ctrl+W` / `Cmd+W` | Close current tab |
-| `Ctrl+F` / `Cmd+F` | Find & Replace |
-| `Ctrl+E` | Explain selected code |
-| `Ctrl+R` | Refactor selected code |
-| `Ctrl+Alt+F` | Fix selected code |
-| `Ctrl+Alt+O` | Optimize selected code |
-| `F11` | Toggle fullscreen editor |
-| `Esc` | Exit fullscreen |
+### Terminal Integration
 
-## 🌟 Comparison: V1 vs V2
+The integrated terminal maintains proper working directory context, ensuring commands execute in the appropriate project folder. This is critical for build tools, package managers, and version control operations.
 
-| Feature | V1 (Chat-First) | V2 (IDE-First) |
-|---------|-----------------|----------------|
-| **Primary Interface** | Chat tabs | Code editor |
-| **AI Interaction** | Type in chat | Select code + context |
-| **Code Editing** | Manual copy/paste | Direct manipulation |
-| **File Management** | Separate file browser | Integrated file tree |
-| **Performance** | Tab switching delays | Instant everything |
-| **Workflow** | 4-step multi-agent | 3-step streamlined |
-| **Visual Feedback** | Text responses | Real-time highlights |
-| **Context Awareness** | Manual context | Automatic context |
+### Editor Features
 
-## 🔧 Development Notes
+Built on CodeMirror, the editor provides:
+- Syntax highlighting for multiple languages
+- Real-time linting integration
+- AI-powered autocomplete
+- Streaming content display
+- Multi-file tab management
 
-### Performance Optimizations
-- **Eliminated tab switching** - Single IDE interface
-- **Direct DOM manipulation** - No virtual DOM overhead  
-- **GPU acceleration** - CSS transforms for smooth UI
-- **Event delegation** - Efficient event handling
-- **Debounced operations** - Smooth real-time updates
+## Security and Privacy
 
-### AI Integration Strategy
-- **Context injection** - Every AI call includes current state
-- **Streaming responses** - Real-time code generation
-- **Error recovery** - Graceful fallbacks for AI failures
-- **Model flexibility** - Works with any Ollama model
+All processing happens locally on your machine. No code, data, or queries leave your system. The IDE operates completely offline once Ollama and language models are installed.
 
-## 🎉 Achievement Summary
+## Requirements
 
-In **5 hours**, we completely transformed the application:
+- Node.js and npm
+- Electron framework
+- Ollama with compatible language models
+- Operating System: macOS, Windows, or Linux
 
-✅ **Architecture** - From chat-first to IDE-first  
-✅ **Performance** - Eliminated all delays and lag  
-✅ **AI Integration** - Direct code manipulation  
-✅ **User Experience** - Professional IDE feel  
-✅ **Visual Design** - Modern dark theme  
-✅ **Code Quality** - Clean, maintainable structure  
-✅ **Real-time Features** - Streaming AI edits  
-✅ **Context Awareness** - Smart AI responses  
+## Installation
 
-## 🚀 Future Enhancements
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Download and install Ollama
+4. Pull a compatible model: `ollama pull [model-name]`
+5. Start the IDE: `npm start`
 
-- **Multi-cursor support** for simultaneous AI edits
-- **Git integration** with AI commit messages  
-- **Plugin system** for custom AI tools
-- **Collaborative editing** with shared AI context
-- **Advanced debugging** with AI assistance
-- **Code completion** powered by local models
+## Configuration
 
----
+The IDE automatically detects available Ollama models and allows selection through the UI. No manual configuration is required for basic operation.
 
-## 🔧 Air-Gapped Setup System
+## Development Philosophy
 
-Mithril AI IDE now includes a comprehensive setup system for air-gapped environments:
+This project prioritizes:
+- Local-first architecture
+- Minimal resource usage
+- Complete data sovereignty
+- Practical agentic capabilities with small models
+- Real-world development workflows
 
-### Features
-- **🔍 Ollama Verification**: Automatically detects and verifies Ollama installation
-- **⚙️ Portable Node.js Support**: Bundles Node.js for systems without internet access  
-- **📦 Model Management**: Copies pre-packaged AI models to user directory
-- **🍎 macOS Native**: Optimized for macOS with Homebrew and native shell support
-- **🔒 Air-Gapped Safe**: No internet connection required for setup
+## Experimental Nature
 
-### Usage
-1. Launch the IDE
-2. Click the **🔧** setup button in the file explorer
-3. Follow the step-by-step setup process
-4. Complete setup and launch the IDE
+dLEMMA IDE is an experimental project exploring the boundaries of what's possible with small, local language models in development environments. It serves as a proof of concept that sophisticated AI assistance doesn't require cloud infrastructure or large model deployments.
 
-For detailed setup instructions, see [PORTABLE-NODEJS-SETUP.md](PORTABLE-NODEJS-SETUP.md)
+## License
 
-## 📦 **Bundled Node.js System**
+This project is licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
 
-The IDE includes a sophisticated Node.js bundling system for complete air-gapped operation:
+Copyright (c) 2024 Josh Berns
 
-### **For Developers (Building Distribution)**
-```bash
-# Setup bundled Node.js for packaging
-npm run setup-nodejs
+## Author
 
-# This downloads Node.js v18.19.0 (LTS) to nodejs-bundle/node/
-# Package includes this bundled runtime
-```
+Josh Berns  
+boshjerns@gmail.com
 
-### **For End Users**
-- IDE automatically detects and uses bundled Node.js
-- Falls back to system Node.js if bundled version not available  
-- No manual Node.js installation required
-- Works completely offline
+## Acknowledgments
 
-### **Priority System**
-1. **Bundled Node.js** - Preferred, consistent version
-2. **System Node.js** - Fallback if bundled not available
-3. **Auto-download** - Attempts to install bundled version if needed
-
-For detailed setup instructions, see [PORTABLE-NODEJS-SETUP.md](PORTABLE-NODEJS-SETUP.md)
-
----
-
-**Built with ❤️ and ⚡ in true John Carmack style - Fast, efficient, and revolutionary.** 
+Built with Electron, CodeMirror, and Ollama. Inspired by the need for privacy-preserving development tools in an increasingly connected world.
