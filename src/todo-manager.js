@@ -153,11 +153,12 @@ Create a minimal set of steps to fully accomplish the user's request. Use as man
 necessary, and as few as possible. Use a separate step for EACH file to create and EACH
 shell command to run.
 
-Allowed tools: create_file, edit_file, run_command, create_folder, chat_response, analyze_code, explain_code, fix_issues, optimize_code.
+Allowed tools (tool MUST be EXACTLY one of these literals, never combined, no pipes or slashes):
+create_file, edit_file, run_command, create_folder, chat_response, analyze_code, explain_code, fix_issues, optimize_code.
 
 For create_file steps: the content must clearly state the exact file path and a brief description of what content will be generated (the IDE will generate the content later with full context).
 
-Respond with STRICT JSON only in the following format (no extra keys, no comments):
+Respond with STRICT JSON only in the following format (no extra keys, no comments). The tool field must be one exact literal as listed above:
 { "todos": [ { "tool": "create_file|edit_file|run_command|create_folder|chat_response|analyze_code|explain_code|fix_issues|optimize_code", "content": "short imperative instruction" } ] }`;
 
       const planningMessage = `${userMessage}\n\nRECENT_CONTEXT:${JSON.stringify(recentContext).slice(0, 2000)}`;
@@ -175,7 +176,7 @@ Respond with STRICT JSON only in the following format (no extra keys, no comment
       const normalized = todos.map((t, idx) => ({
         id: t.id || `step-${idx + 1}`,
         content: String(t.content || '').trim(),
-        tool: String(t.tool || '').trim() || (intent?.tool || 'chat_response'),
+        tool: this.normalizeTool(String(t.tool || '').trim() || (intent?.tool || 'chat_response')),
         status: 'pending'
       })).filter(x => x.content.length > 0);
 
@@ -262,6 +263,20 @@ Respond with STRICT JSON only in the following format (no extra keys, no comment
     }
 
     return todos;
+  }
+
+  /**
+   * Normalize tool name from LLM output
+   */
+  normalizeTool(tool) {
+    const lowered = (tool || '').toLowerCase().trim();
+    // If the model returned combined tools like "create_file|edit_file", prefer the first valid token
+    const candidates = lowered.split(/[^a-z_]+/g).filter(Boolean);
+    const allowed = new Set(['create_file','edit_file','run_command','create_folder','chat_response','analyze_code','explain_code','fix_issues','optimize_code']);
+    for (const c of candidates) {
+      if (allowed.has(c)) return c;
+    }
+    return 'chat_response';
   }
 
   /**

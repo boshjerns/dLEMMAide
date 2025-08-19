@@ -780,7 +780,10 @@ Tool selection rules:
     console.log('⚙️ - Tool to execute:', intent.tool);
     console.log('⚙️ - Chat chunks available:', this.chatCodeChunks.length);
     
-    switch (intent.tool) {
+    // Normalize tool if planner returned combined tokens
+    const normalizedTool = (intent.tool || '').toLowerCase().split(/[^a-z_]+/g).find(t => ['create_file','edit_file','run_command','create_folder','chat_response','analyze_code','explain_code','fix_issues','optimize_code'].includes(t)) || intent.tool;
+
+    switch (normalizedTool) {
       case 'chat_response':
         return await this.chatResponse(this.getCurrentContext(), userMessage);
       
@@ -3149,7 +3152,10 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
     // Get conversation context to understand what was previously created
     const conversationContext = this.getRecentConversationContext();
     
-    // First, let AI determine the appropriate filename and content type
+    // If userMessage explicitly contains a quoted path like 'create a file named "src/App.js"', extract it first
+    const explicitMatch = userMessage.match(/(?:file\s+named|file\s+called|create\s+file|add\s+file)\s+['"]([^'"]+)['"]/i);
+
+    // First, let AI determine the appropriate filename and content type if not explicit
     const filenamePrompt = `Based on this request and the conversation context, what would be the most appropriate filename with extension?
 
 ${conversationContext ? `Recent conversation context:\n${conversationContext}\n\n` : ''}User request: "${userMessage}"
@@ -3168,7 +3174,7 @@ Filename:`;
     
     try {
       console.log('📝 Step 1: Determining filename...');
-      const filenameResponse = await this.generateWithModel(this.selectedModel, filenamePrompt, filenameSystemPrompt);
+      const filenameResponse = explicitMatch ? explicitMatch[1] : await this.generateWithModel(this.selectedModel, filenamePrompt, filenameSystemPrompt);
       
       // Extract filename - handle both plain text and code block responses
       let fileName;
@@ -3246,7 +3252,21 @@ Raw file content:`;
       // Open the file in the editor immediately
       await this.openFile(newFilePath);
       
-      // Now stream content directly to the editor
+      // If the instruction includes explicit content (e.g., "add the following content:"), write it directly
+      const explicitContentMatch = userMessage.match(/add the following content:\s*([\s\S]*)/i);
+      if (explicitContentMatch && explicitContentMatch[1].trim().length > 0) {
+        console.log('📝 Detected explicit content in instruction; writing directly to file');
+        const writeDirect = await ipcRenderer.invoke('fs:writeFile', newFilePath, explicitContentMatch[1].trim());
+        if (!writeDirect.success) {
+          console.error('❌ Failed to write explicit content:', writeDirect.error);
+          return `❌ Error writing content: ${writeDirect.error}`;
+        }
+        this.loadFileTree();
+        await this.openFile(newFilePath);
+        return `📝 Created and populated file: ${fileName}`;
+      }
+
+      // Otherwise, stream content via the model
       console.log('📝 Streaming content to editor...');
       const streamResult = await this.streamContentToEditor(newFilePath, contentPrompt, contentSystemPrompt);
       
