@@ -4490,9 +4490,19 @@ The user is asking about this file content. Provide a comprehensive analysis inc
 
 User message: "${message}"
 
-Provide helpful, accurate, and detailed assistance. If discussing code, use proper markdown formatting.`;
+CRITICAL RESPONSE RULES FOR CHAT MESSAGES:
+- Never output long code blocks in chat. Avoid triple backticks. If the user's request requires writing code, that will be handled by file creation/edit tools.
+- Keep answers short and actionable (under ~10 lines). Provide guidance, not full code.
+- Prefer bullet points and references to files instead of pasting code.
+`;
 
-    return await this.generateWithModel(this.selectedModel, message, systemPrompt);
+    const raw = await this.generateWithModel(this.selectedModel, message, systemPrompt);
+    // Strip code fences and any accidental large code blocks
+    const cleaned = (raw || '')
+      .replace(/^```[\s\S]*?```/gm, '[code omitted]')
+      .replace(/```/g, '')
+      .trim();
+    return cleaned;
   }
 
   // Handle code actions with actual replacement capability
