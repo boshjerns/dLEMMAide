@@ -6,6 +6,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const RealTerminalManager = require('./real-terminal-manager');
 const { spawn } = require('child_process');
 const os = require('os');
 
@@ -15,6 +16,7 @@ const platformUtils = require('./platform-utils');
 
 let mainWindow;
 let setupWindow;
+let terminalManager;
 const activeStreams = new Map(); // webContentsId -> AbortController
 
 // Create main window
@@ -38,6 +40,12 @@ function createWindow() {
   
   // Development tools - always open for debugging
   mainWindow.webContents.openDevTools();
+
+  // Initialize real terminal manager
+  terminalManager = new RealTerminalManager();
+  terminalManager.setRenderer(mainWindow.webContents);
+  
+  console.log('🖥️ Real Terminal Manager initialized and connected to main window');
 
   // Window controls
   setupWindowControls();
@@ -605,10 +613,58 @@ ipcMain.handle('bash:execute', async (event, command) => {
   return await platformUtils.runCommand(command, { shell: 'bash' });
 });
 
+// Real Terminal Integration
+ipcMain.handle('terminal:create', async (event, options = {}) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.createTerminal(options);
+});
+
+ipcMain.handle('terminal:write', async (event, terminalId, data) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.writeToTerminal(terminalId, data);
+});
+
+ipcMain.handle('terminal:resize', async (event, terminalId, cols, rows) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.resizeTerminal(terminalId, cols, rows);
+});
+
+ipcMain.handle('terminal:kill', async (event, terminalId) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.killTerminal(terminalId);
+});
+
+ipcMain.handle('terminal:switch', async (event, terminalId) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.switchTerminal(terminalId);
+});
+
+ipcMain.handle('terminal:list', async (event) => {
+  if (!terminalManager) {
+    return { success: false, error: 'Terminal manager not initialized' };
+  }
+  return terminalManager.getTerminalList();
+});
+
 // App Event Handlers
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
+  // Clean up terminals before quitting
+  if (terminalManager) {
+    terminalManager.cleanup();
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }

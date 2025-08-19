@@ -147,24 +147,84 @@ class IDEAIManager {
 
   async createNewFile(fileName, content = '') {
     const uniqueName = this.getUniqueFileName(fileName);
-    const filePath = `new:${uniqueName}`;
-    const mode = this.getModeFromPath(uniqueName);
     
-    const fileInfo = {
-      path: filePath,
-      name: uniqueName,
-      content: content,
-      mode: mode,
-      isDirty: true,
-      isNew: true,
-      cursor: { line: 0, ch: 0 }
-    };
+    // Get current workspace folder for saving
+    const currentFolder = this.ideCore?.currentFolder;
+    if (!currentFolder) {
+      console.error('❌ No workspace folder open for saving file');
+      // Fallback to in-memory file
+      const filePath = `new:${uniqueName}`;
+      const mode = this.getModeFromPath(uniqueName);
+      
+      const fileInfo = {
+        path: filePath,
+        name: uniqueName,
+        content: content,
+        mode: mode,
+        isDirty: true,
+        isNew: true,
+        cursor: { line: 0, ch: 0 }
+      };
+      
+      this.openFiles.set(filePath, fileInfo);
+      this.addFileTab(fileInfo);
+      await this.switchToFile(filePath);
+      console.log(`📄 Created new file in memory: ${uniqueName}`);
+      return;
+    }
+
+    // Create real file path and save to disk
+    const realFilePath = require('path').join(currentFolder, uniqueName);
     
-    this.openFiles.set(filePath, fileInfo);
-    this.addFileTab(fileInfo);
-    await this.switchToFile(filePath);
-    
-    console.log(`📄 Created new file: ${uniqueName}`);
+    try {
+      // Save file to disk immediately
+      await window.electronAPI.invokeIPC('fs:writeFile', realFilePath, content);
+      console.log(`💾 File saved to disk: ${realFilePath}`);
+      
+      // Create file info for the real file
+      const mode = this.getModeFromPath(uniqueName);
+      const fileInfo = {
+        path: realFilePath,
+        name: uniqueName,
+        content: content,
+        mode: mode,
+        isDirty: false, // Not dirty since we just saved it
+        isNew: false,   // Not new since it's now on disk
+        cursor: { line: 0, ch: 0 }
+      };
+      
+      this.openFiles.set(realFilePath, fileInfo);
+      this.addFileTab(fileInfo);
+      await this.switchToFile(realFilePath);
+      
+      // If content was provided, ensure it's saved immediately
+      if (content) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await this.autoSaveCurrentFile();
+      }
+      
+      console.log(`📄 Created and saved new file: ${uniqueName}`);
+    } catch (error) {
+      console.error('❌ Failed to save file to disk:', error);
+      // Fallback to in-memory file
+      const filePath = `new:${uniqueName}`;
+      const mode = this.getModeFromPath(uniqueName);
+      
+      const fileInfo = {
+        path: filePath,
+        name: uniqueName,
+        content: content,
+        mode: mode,
+        isDirty: true,
+        isNew: true,
+        cursor: { line: 0, ch: 0 }
+      };
+      
+      this.openFiles.set(filePath, fileInfo);
+      this.addFileTab(fileInfo);
+      await this.switchToFile(filePath);
+      console.log(`📄 Created new file in memory (disk save failed): ${uniqueName}`);
+    }
   }
 
   async switchToFile(filePath) {
@@ -175,16 +235,32 @@ class IDEAIManager {
     }
 
     console.log('🔄 Switching to file:', fileInfo.name, 'from current:', this.currentFile);
-    console.log('📄 File content preview:', fileInfo.content ? fileInfo.content.substring(0, 100) + '...' : 'EMPTY');
-
-    // Save current cursor position if editor exists
+    
+    // Save current editor content and cursor position if editor exists
     if (this.editor && this.currentFile) {
       const currentFileInfo = this.openFiles.get(this.currentFile);
       if (currentFileInfo) {
+        // IMPORTANT: Save current editor content to fileInfo before switching
+        currentFileInfo.content = this.editor.getValue();
         currentFileInfo.cursor = this.editor.getCursor();
-        console.log('💾 Saved cursor position for:', this.currentFile);
+        console.log('💾 Saved content and cursor for:', this.currentFile);
       }
     }
+
+    // If file is on disk and not new, reload content from disk to ensure freshness
+    if (!fileInfo.isNew && !filePath.startsWith('new:')) {
+      try {
+        const readResult = await window.electronAPI.invokeIPC('fs:readFile', filePath);
+        if (readResult.success) {
+          fileInfo.content = readResult.content;
+          console.log('📄 Reloaded fresh content from disk for:', fileInfo.name);
+        }
+      } catch (error) {
+        console.log('⚠️ Could not reload from disk, using cached content');
+      }
+    }
+    
+    console.log('📄 File content preview:', fileInfo.content ? fileInfo.content.substring(0, 100) + '...' : 'EMPTY');
 
     // Update current file reference
     this.currentFile = filePath;
@@ -293,6 +369,9 @@ class IDEAIManager {
 
     // Setup event handlers
     this.setupEditorEventHandlers();
+    
+    // Setup auto-save functionality
+    this.setupAutoSave();
     
     // Set the content explicitly after creation
     this.editor.setValue(fileInfo.content || '');
@@ -776,6 +855,9 @@ class IDEAIManager {
         this.clearEditMarkers();
       }, 2000);
       
+      // Immediately save the file after AI finishes editing
+      await this.autoSaveCurrentFile();
+      
     } catch (error) {
       console.error('Error replacing content:', error);
     } finally {
@@ -853,6 +935,9 @@ class IDEAIManager {
         marker.clear();
       }, 2000);
       
+      // Immediately save the file after AI finishes editing
+      await this.autoSaveCurrentFile();
+      
     } finally {
       this.isAIEditing = false;
     }
@@ -867,6 +952,91 @@ class IDEAIManager {
       }
     });
     this.editMarkers = [];
+  }
+
+  setupAutoSave() {
+    if (!this.editor) return;
+    
+    let autoSaveTimeout;
+    
+    // Override the existing change handler to include auto-save
+    this.editor.off('change'); // Remove existing handler
+    
+    this.editor.on('change', (instance, changeObj) => {
+      // Mark file as dirty (existing functionality)
+      this.markFileAsDirty();
+      this.clearEditMarkers();
+      
+      // Only auto-save if this is a user change or AI change, not when loading files
+      if (changeObj.origin !== 'setValue' && changeObj.origin !== 'loadFile') {
+        // Clear existing timeout
+        if (autoSaveTimeout) {
+          clearTimeout(autoSaveTimeout);
+        }
+        
+        // Auto-save after 500ms for AI-generated content, 2 seconds for user edits
+        const delay = changeObj.origin === 'ai' || changeObj.origin === '+input' ? 500 : 2000;
+        autoSaveTimeout = setTimeout(() => {
+          this.autoSaveCurrentFile();
+        }, delay);
+      }
+    });
+  }
+
+  async autoSaveCurrentFile() {
+    if (!this.currentFile || !this.editor) return;
+    
+    const fileInfo = this.openFiles.get(this.currentFile);
+    if (!fileInfo) return;
+    
+    const content = this.editor.getValue();
+    
+    // Only save if the file has a real path (not in-memory)
+    // Remove isDirty check to ensure AI-generated content saves immediately
+    if (!fileInfo.path.startsWith('new:')) {
+      try {
+        await this.saveFileToDisk(fileInfo.path, content);
+        fileInfo.isDirty = false;
+        this.updateTabDirtyState(this.currentFile, false);
+        console.log(`💾 Auto-saved: ${fileInfo.name}`);
+        
+        // Show subtle notification
+        this.showAutoSaveNotification(fileInfo.name);
+      } catch (error) {
+        console.error('❌ Auto-save failed:', error);
+      }
+    }
+  }
+
+  showAutoSaveNotification(fileName) {
+    // Create a subtle auto-save indicator
+    const indicator = document.createElement('div');
+    indicator.className = 'auto-save-indicator';
+    indicator.textContent = `Auto-saved: ${fileName}`;
+    indicator.style.cssText = `
+      position: fixed;
+      top: 30px;
+      right: 10px;
+      background: rgba(34, 197, 94, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 10000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    `;
+    
+    document.body.appendChild(indicator);
+    
+    // Fade in
+    setTimeout(() => indicator.style.opacity = '1', 10);
+    
+    // Fade out and remove after 2 seconds
+    setTimeout(() => {
+      indicator.style.opacity = '0';
+      setTimeout(() => indicator.remove(), 300);
+    }, 2000);
   }
 
   // Selection Actions
@@ -1213,15 +1383,8 @@ class IDEAIManager {
     // Restore the original ASCII art welcome screen with gradient
     this.editorContainer.innerHTML = `
       <div class="editor-welcome">
-        <div class="ascii-logo">
-          <pre class="mithril-ascii">
-███╗   ███╗██╗████████╗██╗  ██╗██████╗ ██╗██╗     
-████╗ ████║██║╚══██╔══╝██║  ██║██╔══██╗██║██║     
-██╔████╔██║██║   ██║   ███████║██████╔╝██║██║     
-██║╚██╔╝██║██║   ██║   ██╔══██║██╔══██╗██║██║     
-██║ ╚═╝ ██║██║   ██║   ██║  ██║██║  ██║██║███████╗
-╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝
-          </pre>
+        <div class="logo-welcome">
+          <img src="../logoM.png" alt="dLEMMA IDE" class="welcome-logo" />
         </div>
       </div>
     `;
@@ -1465,15 +1628,8 @@ class IDEAIManager {
     // Restore the original ASCII art welcome screen with gradient
     this.editorContainer.innerHTML = `
       <div class="editor-welcome">
-        <div class="ascii-logo">
-          <pre class="mithril-ascii">
-███╗   ███╗██╗████████╗██╗  ██╗██████╗ ██╗██╗     
-████╗ ████║██║╚══██╔══╝██║  ██║██╔══██╗██║██║     
-██╔████╔██║██║   ██║   ███████║██████╔╝██║██║     
-██║╚██╔╝██║██║   ██║   ██╔══██║██╔══██╗██║██║     
-██║ ╚═╝ ██║██║   ██║   ██║  ██║██║  ██║██║███████╗
-╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝
-          </pre>
+        <div class="logo-welcome">
+          <img src="../logoM.png" alt="dLEMMA IDE" class="welcome-logo" />
         </div>
       </div>
     `;

@@ -419,7 +419,9 @@ class IDETerminalManager {
   runFileCommand(filePath, mapping) {
     const command = typeof mapping.command === 'function' ? mapping.command(filePath) : mapping.command;
     const args = typeof mapping.args === 'function' ? mapping.args(filePath) : (mapping.args || []);
-    const cwd = mapping.cwd ? mapping.cwd(filePath) : this.workingDirectory;
+    // Use the IDE's current workspace folder if available
+    const defaultCwd = window.mithrilIDE?.currentFolder || this.workingDirectory || path.dirname(filePath);
+    const cwd = mapping.cwd ? mapping.cwd(filePath) : defaultCwd;
     const shellFlag = typeof mapping.shell === 'function' ? mapping.shell(filePath) : (mapping.shell || false);
     
     this.appendOutput(`⚡ Running: ${command} ${Array.isArray(args) ? args.join(' ') : ''}`);
@@ -446,8 +448,12 @@ class IDETerminalManager {
     const command = parts[0];
     const args = parts.slice(1);
     
+    // Use the IDE's current workspace folder if available
+    const workingDir = window.mithrilIDE?.currentFolder || this.workingDirectory || process.cwd();
+    console.log('📁 Executing command in directory:', workingDir);
+    
     this.runCommand(command, args, {
-      cwd: this.workingDirectory || process.cwd(),
+      cwd: workingDir,
       shell: true
     }, callback);
   }
@@ -471,7 +477,7 @@ class IDETerminalManager {
       }
 
       this.currentProcess = spawn(command, args, {
-        cwd: options.cwd || this.workingDirectory || process.cwd(),
+        cwd: options.cwd || window.mithrilIDE?.currentFolder || this.workingDirectory || process.cwd(),
         shell: options.shell || false,
         stdio: ['pipe', 'pipe', 'pipe'],
         env
@@ -617,6 +623,12 @@ class IDETerminalManager {
   setWorkingDirectory(dirPath) {
     this.workingDirectory = dirPath;
     console.log('📁 Working directory set to:', dirPath);
+    
+    // Also update the current folder in the IDE core if available
+    if (window.mithrilIDE && window.mithrilIDE.currentFolder !== dirPath) {
+      window.mithrilIDE.currentFolder = dirPath;
+      console.log('📁 Updated IDE current folder to:', dirPath);
+    }
   }
 
   // Get current working directory

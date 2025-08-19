@@ -11,24 +11,13 @@ if (typeof MithrilAIIDE !== 'undefined') {
   MithrilAIIDE.prototype.executeTodoStep = async function(intent, todoMessage) {
     console.log('⚙️ Executing todo step:', todoMessage);
     console.log('⚙️ Todo tool:', intent.tool);
+    console.log('⚙️ Original user request:', intent.originalUserRequest || 'Not provided');
     
     try {
       switch (intent.tool) {
         case 'create_file':
-          // For todo-driven file creation, prefer dynamic generator
-          if (todoMessage.toLowerCase().includes('project structure')) {
-            return await this.createProjectStructure(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('html')) {
-            return await this.createHTMLFile(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('component')) {
-            // Route component creation to dynamic content generation
-            return await this.executeFileCreation(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('css') || todoMessage.toLowerCase().includes('styles') || todoMessage.toLowerCase().includes('styling')) {
-            // Route styles creation to dynamic content generation
-            return await this.executeFileCreation(todoMessage);
-          } else {
-            return await this.executeFileCreation(todoMessage);
-          }
+          // ALWAYS use dynamic file creation with full context - NO HARDCODED CONTENT
+          return await this.executeFileCreation(todoMessage);
           
         case 'edit_file':
           return await this.editFile('', todoMessage, todoMessage);
@@ -81,31 +70,11 @@ if (typeof MithrilAIIDE !== 'undefined') {
    * Create HTML file for apps
    */
   MithrilAIIDE.prototype.createHTMLFile = async function(message) {
-    console.log('⚙️ Creating HTML file for:', message);
+    console.log('⚙️ Creating HTML file dynamically for:', message);
     
-    let appTitle = 'App';
-
-    const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${appTitle}</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div id="app"></div>
-    <script src="app.js"></script>
-</body>
-</html>`;
-
-    try {
-      const result = await this.createFile('index.html', htmlContent, 'Creating index.html for app');
-      this.addChatMessage('ai', `✅ Created index.html for ${appTitle}`);
-      return result;
-    } catch (error) {
-      return `Error creating HTML file: ${error.message}`;
-    }
+    // Route to dynamic file creation instead of using hardcoded template
+    // Let AI generate the appropriate HTML based on the user's actual request
+    return await this.executeFileCreation(`Create an HTML file: ${message}`);
   };
 
   /**

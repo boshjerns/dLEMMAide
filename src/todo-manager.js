@@ -491,11 +491,13 @@ class TodoListManager {
         const intent = {
           tool: nextTodo.tool,
           target: 'current-todo',
-          confidence: 0.95
+          confidence: 0.95,
+          originalUserRequest: this.lastGeneratedMessage  // PRESERVE ORIGINAL USER REQUEST
         };
         
-        // Execute the todo step
-        const result = await this.ideCore.executeTodoStep(intent, nextTodo.content);
+        // Execute the todo step with full context
+        const todoMessageWithContext = `${nextTodo.content} for the following user request: ${this.lastGeneratedMessage}`;
+        const result = await this.ideCore.executeTodoStep(intent, todoMessageWithContext);
         console.log('🗂️ Auto-execution result:', result);
         
         // Mark this todo as completed and continue (but prevent infinite recursion)

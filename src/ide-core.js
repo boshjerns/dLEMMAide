@@ -574,9 +574,11 @@ class MithrilAIIDE {
           executionIntent = {
             tool: currentTodo.tool,
             target: 'current-todo',
-            confidence: 0.95
+            confidence: 0.95,
+            originalUserRequest: message  // PRESERVE ORIGINAL USER REQUEST
           };
-          executionMessage = currentTodo.content;
+          // Combine todo content with original context for better file generation
+          executionMessage = `${currentTodo.content} for the following user request: ${message}`;
           shouldExecuteOriginalTask = false;
         }
       } else {
@@ -1398,8 +1400,9 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
       const streamResult = await this.streamContentToEditor(targetFile, editPrompt, editSystemPrompt);
       
       if (streamResult.success) {
-        // Save the edited content to disk
-        await ipcRenderer.invoke('fs:writeFile', targetFile, streamResult.content);
+        // Note: File is already saved immediately in streamContentToEditor
+        // Wait a moment to ensure save completes
+        await new Promise(resolve => setTimeout(resolve, 100));
         console.log('✅ File successfully edited and saved');
         return `✅ Successfully ${editType === 'fix' ? 'fixed' : 'edited'} ${pathUtils.basename(targetFile)}`;
       } else {
@@ -1416,6 +1419,11 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
   async streamContentToEditor(filePath, prompt, systemPrompt) {
     console.log('🌊 ==================== STREAMING TO EDITOR ====================');
     console.log('🌊 Target file:', filePath);
+    
+    // Add extra JSON validation to system prompt if it's a JSON file
+    if (filePath.endsWith('.json')) {
+      systemPrompt += ' REMEMBER: This is a JSON file. Do NOT include ANY comments. JSON does not support // or /* */ comments. Generate only valid JSON.';
+    }
     
     try {
       // Get the editor instance for this file
@@ -1501,6 +1509,23 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
               editor.setValue(finalContent);
             }
             
+            // IMMEDIATELY save the file after streaming completes
+            if (filePath && !filePath.startsWith('new:')) {
+              console.log('💾 Auto-saving streamed content to:', filePath);
+              ipcRenderer.invoke('fs:writeFile', filePath, finalContent)
+                .then(() => {
+                  console.log('✅ File saved successfully after streaming');
+                  // Mark file as not dirty
+                  if (this.ideAIManager?.openFiles?.get(filePath)) {
+                    this.ideAIManager.openFiles.get(filePath).isDirty = false;
+                    this.ideAIManager.updateTabDirtyState(filePath, false);
+                  }
+                })
+                .catch(err => {
+                  console.error('❌ Failed to save file after streaming:', err);
+                });
+            }
+            
             resolve({ success: true, content: finalContent });
           }
         };
@@ -1573,6 +1598,12 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
       this.currentFolder = result.filePaths[0];
       console.log('📁 Selected folder path:', this.currentFolder);
       console.log('📁 Folder name:', pathUtils.basename(this.currentFolder));
+      
+      // Update terminal working directory to match workspace
+      if (this.ideTerminalManager) {
+        this.ideTerminalManager.setWorkingDirectory(this.currentFolder);
+        console.log('📁 Updated terminal working directory to:', this.currentFolder);
+      }
       
       // Save the workspace path to localStorage
       localStorage.setItem('last-workspace', this.currentFolder);
@@ -1703,6 +1734,13 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
         if (result && result.exists) {
           this.currentFolder = lastWorkspace;
           console.log('📂 Loading last workspace:', this.currentFolder);
+          
+          // Update terminal working directory to match restored workspace
+          if (this.ideTerminalManager) {
+            this.ideTerminalManager.setWorkingDirectory(this.currentFolder);
+            console.log('📁 Updated terminal working directory to restored workspace:', this.currentFolder);
+          }
+          
           await this.loadFileTree();
           this.addChatMessage('ai', `📁 Restored workspace: ${pathUtils.basename(this.currentFolder)}`);
         } else {
@@ -2435,6 +2473,32 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
     return messageDiv;
   }
 
+  getRecentConversationContext() {
+    // Get recent chat messages for context
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return '';
+    
+    const messages = chatMessages.querySelectorAll('.message');
+    const recentMessages = [];
+    
+    // Get last 5 messages for context
+    const messagesToGet = Math.min(5, messages.length);
+    for (let i = messages.length - messagesToGet; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg) {
+        const sender = msg.classList.contains('user') ? 'User' : 'Assistant';
+        const content = msg.querySelector('.message-content')?.textContent?.trim() || '';
+        if (content && content.length > 0) {
+          // Truncate very long messages
+          const truncatedContent = content.length > 200 ? content.substring(0, 200) + '...' : content;
+          recentMessages.push(`${sender}: ${truncatedContent}`);
+        }
+      }
+    }
+    
+    return recentMessages.join('\n');
+  }
+
   clearChatAndHistory() {
     console.log('🗑️ ==================== CLEARING CHAT AND HISTORY ====================');
     
@@ -3082,10 +3146,13 @@ Return ONLY the complete, corrected file content. No explanations, no markdown, 
     console.log('📝 ==================== SMART FILE CREATION ====================');
     console.log('📝 User request:', userMessage);
     
+    // Get conversation context to understand what was previously created
+    const conversationContext = this.getRecentConversationContext();
+    
     // First, let AI determine the appropriate filename and content type
-    const filenamePrompt = `Based on this request, what would be the most appropriate filename with extension?
+    const filenamePrompt = `Based on this request and the conversation context, what would be the most appropriate filename with extension?
 
-User request: "${userMessage}"
+${conversationContext ? `Recent conversation context:\n${conversationContext}\n\n` : ''}User request: "${userMessage}"
 
 Respond with ONLY the filename (no path, no explanations). Examples:
 - "index.html" for web pages
@@ -3093,10 +3160,11 @@ Respond with ONLY the filename (no path, no explanations). Examples:
 - "styles.css" for stylesheets
 - "flappy-bird.py" for games
 - "todo-app.js" for JavaScript apps
+- "package.json" for npm package files
 
 Filename:`;
 
-    const filenameSystemPrompt = `You are a filename expert. Generate appropriate filenames with proper extensions based on the user request. Return ONLY the filename.`;
+    const filenameSystemPrompt = `You are a filename expert. Generate appropriate filenames with proper extensions based on the user request and conversation context. Return ONLY the filename.`;
     
     try {
       console.log('📝 Step 1: Determining filename...');
@@ -3129,10 +3197,10 @@ Filename:`;
       
       console.log('📝 AI-generated filename:', fileName);
       
-      // Now generate the file content
+      // Now generate the file content with conversation context
       const contentPrompt = `Create the complete file content for: "${fileName}"
 
-User request: ${userMessage}
+${conversationContext ? `Recent conversation context:\n${conversationContext}\n\n` : ''}User request: ${userMessage}
 
 CRITICAL INSTRUCTIONS:
 - Return ONLY the raw file content
@@ -3140,16 +3208,18 @@ CRITICAL INSTRUCTIONS:
 - NO triple backticks or code blocks
 - NO "Here's the code" or similar text
 - Just the pure file content that should be saved
+${fileName.endsWith('.json') ? '- For JSON files: NO COMMENTS ALLOWED (// comments make JSON invalid)' : ''}
 
 For the request "${userMessage}", create functional, production-ready code with:
 - Proper structure and formatting
 - All necessary imports/dependencies
-- Helpful inline comments within the code
+${fileName.endsWith('.json') ? '- Valid JSON syntax without any comments' : '- Helpful inline comments within the code'}
 - Complete implementation
+- Consider the conversation context to understand what was previously created
 
 Raw file content:`;
 
-      const contentSystemPrompt = `You are a code generator. Create complete, functional file content based on the user request. Return ONLY the raw file content without any explanations or formatting.`;
+      const contentSystemPrompt = `You are a code generator. Create complete, functional file content based on the user request and conversation context. Return ONLY the raw file content without any explanations or formatting.${fileName.endsWith('.json') ? ' CRITICAL: This is a JSON file. NEVER include ANY comments (no //, no /* */) as JSON does NOT support comments and they will make the file invalid. Generate only valid JSON syntax.' : ''}`;
       
       console.log('📝 Step 2: Creating file and streaming content directly to editor...');
       
@@ -3181,9 +3251,10 @@ Raw file content:`;
       const streamResult = await this.streamContentToEditor(newFilePath, contentPrompt, contentSystemPrompt);
       
       if (streamResult.success) {
-        // Save the final content to disk
-        await ipcRenderer.invoke('fs:writeFile', newFilePath, streamResult.content);
-        console.log('✅ File creation and streaming complete');
+        // Note: File is already saved immediately in streamContentToEditor
+        // Wait a moment to ensure save completes
+        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('✅ File creation, streaming, and saving complete');
         return `📝 Created and populated file: ${fileName}`;
       } else {
         return `❌ Error generating content: ${streamResult.error}`;
@@ -5007,18 +5078,13 @@ Explain what this code does, how it works, and any important concepts. Provide a
   async executeTodoStep(intent, todoMessage) {
     console.log('⚙️ Executing todo step:', todoMessage);
     console.log('⚙️ Todo tool:', intent.tool);
+    console.log('⚙️ Original user request:', intent.originalUserRequest || 'Not provided');
     
     try {
       switch (intent.tool) {
         case 'create_file':
-          // Prefer dynamic creation for all content types
-          if (todoMessage.toLowerCase().includes('project structure')) {
-            return await this.createProjectStructure(todoMessage);
-          } else if (todoMessage.toLowerCase().includes('html')) {
-            return await this.createHTMLFile(todoMessage);
-          } else {
-            return await this.executeFileCreation(todoMessage);
-          }
+          // ALWAYS use dynamic file creation with full context - NO HARDCODED CONTENT
+          return await this.executeFileCreation(todoMessage);
           
         case 'edit_file':
           return await this.editFile('', todoMessage, todoMessage);
@@ -5071,31 +5137,11 @@ Explain what this code does, how it works, and any important concepts. Provide a
    * Create HTML file for apps
    */
   async createHTMLFile(message) {
-    console.log('⚙️ Creating HTML file for:', message);
+    console.log('⚙️ Creating HTML file dynamically for:', message);
     
-    let appTitle = 'App';
-
-    const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${appTitle}</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div id="app"></div>
-    <script src="app.js"></script>
-</body>
-</html>`;
-
-    try {
-      const result = await this.createFile('index.html', htmlContent, 'Creating index.html for app');
-      this.addChatMessage('ai', `✅ Created index.html for ${appTitle}`);
-      return result;
-    } catch (error) {
-      return `Error creating HTML file: ${error.message}`;
-    }
+    // Route to dynamic file creation instead of using hardcoded template
+    // Let AI generate the appropriate HTML based on the user's actual request
+    return await this.executeFileCreation(`Create an HTML file: ${message}`);
   }
 
   /**

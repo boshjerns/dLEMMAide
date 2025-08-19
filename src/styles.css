@@ -1,4 +1,4 @@
-/* Mithril AI IDE - Blue-Magenta-Yellow Gradient Theme */
+/* dLEMMA IDE - Blue-Magenta-Yellow Gradient Theme */
 
 :root {
   /* Default Dark Theme */
@@ -2570,53 +2570,21 @@ body {
   overflow: hidden;
 }
 
-.ascii-logo {
+.logo-welcome {
   position: relative;
   z-index: 1;
   user-select: none;
   animation: retro-glow 3s ease-in-out infinite alternate;
 }
 
-.mithril-ascii {
-  font-family: 'Courier New', 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-  font-size: clamp(8px, 1.5vw, 16px);
-  line-height: 1;
-  margin: 0;
-  padding: 20px;
-  text-align: center;
-  font-weight: bold;
-  letter-spacing: 0;
-  white-space: pre;
-  
-  /* Retro gradient effect */
-  background: linear-gradient(
-    45deg,
-    #00d4ff,    /* Cyan */
-    #0099ff,    /* Blue */
-    #6600ff,    /* Purple */
-    #cc00ff,    /* Magenta */
-    #ff0099,    /* Pink */
-    #ff3366,    /* Red-pink */
-    #ff6600,    /* Orange */
-    #ffaa00     /* Yellow */
-  );
-  background-size: 800% 800%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  
-  /* Animated gradient */
-  animation: retro-rainbow 4s ease-in-out infinite;
-  
-  /* Pixelated effect */
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-  
-  /* Text shadow for retro glow */
-  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.3))
-          drop-shadow(0 0 20px rgba(0, 153, 255, 0.2))
-          drop-shadow(0 0 30px rgba(102, 0, 255, 0.1));
+.welcome-logo {
+  max-width: min(60vw, 400px);
+  max-height: min(40vh, 300px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 20px rgba(14, 165, 233, 0.3));
+  animation: pulse-glow 2s ease-in-out infinite alternate;
 }
 
 /* Background pattern */
@@ -2662,16 +2630,16 @@ body {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .mithril-ascii {
-    font-size: clamp(6px, 2vw, 12px);
-    padding: 10px;
+  .welcome-logo {
+    max-width: min(70vw, 300px);
+    max-height: min(35vh, 250px);
   }
 }
 
 @media (max-width: 480px) {
-  .mithril-ascii {
-    font-size: clamp(4px, 2.5vw, 10px);
-    padding: 5px;
+  .welcome-logo {
+    max-width: min(80vw, 250px);
+    max-height: min(30vh, 200px);
   }
 }
 
