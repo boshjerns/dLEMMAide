@@ -13,14 +13,13 @@ class TodoListManager {
     this.isProcessingTodos = false;
     this.todoContainer = null;
     
-    // Task complexity patterns for detection (generic only; no framework-specific keywords)
+    // Task complexity patterns for detection
     this.complexityPatterns = {
       multiStep: [
         /create.*application/i,
         /build.*from.*scratch/i,
         /implement.*system/i,
         /set.*up.*project/i,
-        /develop.*website/i,
         /setup.*database/i,
         /configure.*environment/i,
         /integrate.*with/i,
@@ -32,18 +31,15 @@ class TodoListManager {
         /create.*dashboard/i,
         /build.*backend/i,
         /setup.*deployment/i,
-        /full.*application/i,
-        /complete.*application/i,
-        /entire.*application/i
+        /multiple.*files/i,
+        /several.*components/i,
+        /various.*parts/i
       ],
       stepIndicators: [
         /step.*by.*step/i,
         /first.*then.*finally/i,
         /\d+\.\s+/g, // Numbered lists
-        /then|next|after|finally/i,
-        /multiple.*files/i,
-        /several.*components/i,
-        /various.*parts/i
+        /then|next|after|finally/i
       ]
     };
 
@@ -58,35 +54,40 @@ class TodoListManager {
 
   /**
    * Analyze user input to determine if it needs a todo list
+   * Uses LLM-driven classification with heuristics as a fallback.
    */
-  shouldCreateTodoList(userMessage, intent) {
-    console.log('🗂️ Analyzing task complexity for:', userMessage);
-    
-    // Check for complexity patterns
+  async shouldCreateTodoList(userMessage, intent) {
+    console.log('🗂️ Analyzing task complexity (LLM) for:', userMessage);
+
+    try {
+      const systemPrompt = `You are a planning classifier for an IDE. Decide if the user's request requires
+creating a TODO list of multiple steps, versus a single direct action.
+
+Return strict JSON only:
+{ "needs_todo": true|false, "reason": "short reason", "estimated_steps": number }`;
+
+      const raw = await this.ideCore.generateWithModel(
+        this.ideCore.models.intent,
+        userMessage,
+        systemPrompt
+      );
+      const clean = (raw || '').replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      if (typeof parsed?.needs_todo === 'boolean') {
+        console.log('🗂️ LLM classification:', parsed);
+        return parsed.needs_todo;
+      }
+    } catch (err) {
+      console.warn('🗂️ LLM todo classification failed, falling back to heuristics:', err?.message);
+    }
+
+    // Heuristic fallback (generic, no framework-specific keywords)
     const isComplex = this.detectComplexity(userMessage);
     const hasMultipleSteps = this.detectMultipleSteps(userMessage);
     const isLongRequest = userMessage.length > 100;
     const hasMultipleActions = this.hasMultipleActions(userMessage);
-    const isAppCreation = this.detectAppCreation(userMessage);
-    
-    console.log('🗂️ Complexity analysis results:');
-    console.log('🗂️ - Is complex pattern:', isComplex);
-    console.log('🗂️ - Has multiple steps:', hasMultipleSteps);
-    console.log('🗂️ - Is long request:', isLongRequest);
-    console.log('🗂️ - Has multiple actions:', hasMultipleActions);
-    console.log('🗂️ - Is app creation:', isAppCreation);
-    console.log('🗂️ - Intent tool:', intent?.tool);
-    
-    // Always create todos for complex tool operations
-    if (intent?.tool === 'create_file' && (isComplex || isAppCreation)) {
-      console.log('🗂️ ✅ Complex create_file operation detected');
-      return true;
-    }
-
-    // Create todo list if any complexity indicators are found
-    const shouldCreate = isComplex || hasMultipleSteps || isAppCreation || (isLongRequest && hasMultipleActions);
-    console.log('🗂️ Final decision:', shouldCreate ? 'CREATE TODO LIST' : 'NO TODO LIST NEEDED');
-    
+    const shouldCreate = isComplex || hasMultipleSteps || (isLongRequest && hasMultipleActions) || intent?.tool === 'create_file';
+    console.log('🗂️ Heuristic decision:', shouldCreate ? 'CREATE TODO LIST' : 'NO TODO LIST NEEDED');
     return shouldCreate;
   }
 
@@ -121,15 +122,12 @@ class TodoListManager {
    * Detect if message is requesting app creation
    */
   detectAppCreation(message) {
+    // Keep generic detection only (no framework-specific or app-type keywords)
     const appPatterns = [
-      /.*app/i,
-      /application/i,
-      /in.*full/i,
-      /full.*stack/i,
-      /complete.*project/i,
-      /entire.*project/i
+      /\bapplication\b/i,
+      /\bproject\b/i,
+      /\bapp\b/i
     ];
-    
     return appPatterns.some(pattern => pattern.test(message));
   }
 
@@ -137,60 +135,68 @@ class TodoListManager {
    * Generate todo list from user message and intent
    */
   async generateTodoList(userMessage, intent) {
-    console.log('🗂️ Generating todo list for:', userMessage);
-    
+    console.log('🗂️ Generating todo list (LLM) for:', userMessage);
+
     // Store for memory system
     this.lastGeneratedIntent = intent;
     this.lastGeneratedMessage = userMessage;
-    
-    // Create session ID for this todo list
     this.currentSessionId = 'todo_' + Date.now();
-    
-    let todos = [];
 
-    // Use LLM-driven planning to dynamically determine steps; fall back to generic rules
+    // Try LLM-driven planning first
     try {
-      const recentContext = typeof this.ideCore.getRecentConversationContext === 'function'
+      const recentContext = this.ideCore.getRecentConversationContext
         ? this.ideCore.getRecentConversationContext()
         : [];
 
-      const planningPrompt = `You are a planning assistant for a local-first IDE. Break down the user's request into a minimal set of executable steps.\n\nRules:\n- Output ONLY a strict JSON array (no markdown).\n- Each step must be an object with keys: id, content, tool, status.\n- tool MUST be one of: create_file, edit_file, run_command, chat_response, analyze_code, fix_issues.\n- Create one create_file step PER FILE to be created (do not combine).\n- Create one run_command step PER command.\n- Keep steps framework-agnostic and infer from request/context.\n- status must always be \"pending\".\n\nUser message: \"${userMessage}\"\n\nConversation context (last ${recentContext.length} messages): ${JSON.stringify(recentContext)}\n`;
+      const systemPrompt = `You are a senior software engineer planning concrete execution steps for an IDE.
+Create a minimal set of steps to fully accomplish the user's request. Use as many steps as
+necessary, and as few as possible. Use a separate step for EACH file to create and EACH
+shell command to run.
 
-      const planningSystem = 'You convert requests into actionable step lists for an IDE. Return only valid JSON arrays.';
-      const response = await this.ideCore.generateWithModel(this.ideCore.selectedModel, planningPrompt, planningSystem);
+Allowed tools: create_file, edit_file, run_command, create_folder, chat_response, analyze_code, explain_code, fix_issues, optimize_code.
 
-      let parsed = [];
-      try {
-        const cleaned = response.trim().replace(/^```json\n?|```$/g, '');
-        parsed = JSON.parse(cleaned);
-      } catch (_) {
-        console.warn('⚠️ Could not parse LLM todo plan JSON; falling back to generic decomposition');
+For create_file steps: the content must clearly state the exact file path and a brief description of what content will be generated (the IDE will generate the content later with full context).
+
+Respond with STRICT JSON only in the following format (no extra keys, no comments):
+{ "todos": [ { "tool": "create_file|edit_file|run_command|create_folder|chat_response|analyze_code|explain_code|fix_issues|optimize_code", "content": "short imperative instruction" } ] }`;
+
+      const planningMessage = `${userMessage}\n\nRECENT_CONTEXT:${JSON.stringify(recentContext).slice(0, 2000)}`;
+      const raw = await this.ideCore.generateWithModel(
+        this.ideCore.models.intent,
+        planningMessage,
+        systemPrompt
+      );
+      const clean = (raw || '').replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      let todos = Array.isArray(parsed) ? parsed : parsed?.todos;
+      if (!Array.isArray(todos)) throw new Error('Planner did not return a todos array');
+
+      // Normalize into internal structure
+      const normalized = todos.map((t, idx) => ({
+        id: t.id || `step-${idx + 1}`,
+        content: String(t.content || '').trim(),
+        tool: String(t.tool || '').trim() || (intent?.tool || 'chat_response'),
+        status: 'pending'
+      })).filter(x => x.content.length > 0);
+
+      if (normalized.length > 0) {
+        normalized[0].status = 'in_progress';
+        this.currentTodos = normalized;
+        this.updateTodoUI();
+        return normalized;
       }
-
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        todos = parsed.map((step, index) => ({
-          id: step.id || `step-${index + 1}`,
-          content: step.content || 'Task',
-          tool: step.tool || 'chat_response',
-          status: 'pending'
-        }));
-      } else {
-        todos = this.generateGenericTodos(userMessage, intent);
-      }
-    } catch (e) {
-      console.warn('⚠️ LLM planning failed, using generic todo generation:', e.message);
-      todos = this.generateGenericTodos(userMessage, intent);
+    } catch (err) {
+      console.warn('🗂️ LLM planning failed, falling back to generic todo generation:', err?.message);
     }
 
-    // Set the first todo as in_progress
-    if (todos.length > 0) {
-      todos[0].status = 'in_progress';
+    // Fallback to generic heuristic-based generation
+    const fallbackTodos = this.generateGenericTodos(userMessage, intent);
+    if (fallbackTodos.length > 0) {
+      fallbackTodos[0].status = 'in_progress';
     }
-
-    this.currentTodos = todos;
+    this.currentTodos = fallbackTodos;
     this.updateTodoUI();
-    
-    return todos;
+    return fallbackTodos;
   }
 
   // Removed hardcoded calendar app todos - now using dynamic generation
@@ -199,185 +205,29 @@ class TodoListManager {
    * Generate todos for React application creation
    */
   generateReactAppTodos(message) {
-    const todos = [
-      {
-        id: 'setup-project-structure',
-        content: 'Set up project structure and package.json',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-index-html',
-        content: 'Create index.html entry point',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-app-component',
-        content: 'Create main App component (App.js)',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-react-dependencies',
-        content: 'Add React dependencies and setup',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'create-basic-styling',
-        content: 'Create CSS styling and basic layout',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'test-application',
-        content: 'Test the React application setup',
-        tool: 'chat_response',
-        status: 'pending'
-      }
-    ];
-
-    // Add specific features if mentioned
-    if (message.toLowerCase().includes('routing')) {
-      todos.splice(4, 0, {
-        id: 'add-routing',
-        content: 'Implement React Router for navigation',
-        tool: 'create_file',
-        status: 'pending'
-      });
-    }
-
-    if (message.toLowerCase().includes('state')) {
-      todos.splice(3, 0, {
-        id: 'add-state-management',
-        content: 'Set up state management (useState/Context)',
-        tool: 'create_file',
-        status: 'pending'
-      });
-    }
-
-    return todos;
+    // Deprecated specific generator; keep as alias to generic for backward compatibility
+    return this.generateGenericTodos(message, { tool: 'create_file' });
   }
 
   /**
    * Generate todos for website creation
    */
   generateWebsiteTodos(message) {
-    return [
-      {
-        id: 'create-html-structure',
-        content: 'Create HTML structure and layout',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-css-styling',
-        content: 'Add CSS styling and responsive design',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'implement-javascript',
-        content: 'Implement JavaScript functionality',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'optimize-performance',
-        content: 'Optimize images and performance',
-        tool: 'edit_file',
-        status: 'pending'
-      },
-      {
-        id: 'test-cross-browser',
-        content: 'Test across different browsers and devices',
-        tool: 'chat_response',
-        status: 'pending'
-      }
-    ];
+    return this.generateGenericTodos(message, { tool: 'create_file' });
   }
 
   /**
    * Generate todos for API creation
    */
   generateAPITodos(message) {
-    return [
-      {
-        id: 'design-api-structure',
-        content: 'Design API endpoints and data structure',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'setup-server',
-        content: 'Set up server framework (Express/Fastify)',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'implement-routes',
-        content: 'Implement API routes and handlers',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-middleware',
-        content: 'Add middleware (CORS, validation, auth)',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'setup-database',
-        content: 'Set up database connection and models',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'test-endpoints',
-        content: 'Test API endpoints and error handling',
-        tool: 'chat_response',
-        status: 'pending'
-      }
-    ];
+    return this.generateGenericTodos(message, { tool: 'create_file' });
   }
 
   /**
    * Generate todos for component creation
    */
   generateComponentTodos(message) {
-    return [
-      {
-        id: 'plan-component-structure',
-        content: 'Plan component props and structure',
-        tool: 'chat_response',
-        status: 'pending'
-      },
-      {
-        id: 'create-component-file',
-        content: 'Create component file with basic structure',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'implement-functionality',
-        content: 'Implement component logic and state',
-        tool: 'edit_file',
-        status: 'pending'
-      },
-      {
-        id: 'add-styling',
-        content: 'Add component styling (CSS/styled-components)',
-        tool: 'create_file',
-        status: 'pending'
-      },
-      {
-        id: 'test-component',
-        content: 'Test component integration and props',
-        tool: 'chat_response',
-        status: 'pending'
-      }
-    ];
+    return this.generateGenericTodos(message, { tool: 'create_file' });
   }
 
   /**
@@ -428,13 +278,6 @@ class TodoListManager {
       return 'analyze_code';
     } else if (lower.includes('fix') || lower.includes('debug') || lower.includes('resolve')) {
       return 'fix_issues';
-    } else if (
-      lower.includes('install') || lower.includes('run ') || lower.includes('execute') ||
-      lower.includes('npm ') || lower.includes('yarn ') || lower.includes('pnpm ') ||
-      lower.includes('pip ') || lower.includes('python ') || lower.includes('node ') ||
-      lower.includes('docker ') || lower.includes('git ')
-    ) {
-      return 'run_command';
     } else {
       return intent?.tool || 'chat_response';
     }
