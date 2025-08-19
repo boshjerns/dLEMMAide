@@ -561,7 +561,7 @@ class MithrilAIIDE {
       let executionIntent = intent;
       let executionMessage = message;
       
-      if (this.todoManager && this.todoManager.shouldCreateTodoList(message, intent)) {
+      if (this.todoManager && await this.todoManager.shouldCreateTodoList(message, intent)) {
         console.log('🗂️ Complex task detected - generating todo list');
         const todos = await this.todoManager.generateTodoList(message, intent);
         console.log('🗂️ Todo list generated:', todos.length, 'items');

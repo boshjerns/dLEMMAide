@@ -45,18 +45,23 @@ Respond with JSON only:
   "estimatedSteps": number
 }
 
-A todo list is needed if:
-- The request requires creating multiple files
+A todo list IS DEFINITELY needed if:
+- User wants to create/build/make an application, app, website, or project
+- The request mentions creating something with multiple parts
+- Multiple files need to be created (HTML, JS, CSS, config files, etc.)
 - Multiple distinct operations are needed
 - There are dependencies between steps
-- It's building a complete application or feature
-- The request involves complex setup or configuration
+- It's building a complete feature or system
+- The request involves setup, configuration, and implementation
 
 A todo list is NOT needed if:
 - It's a single file operation
 - It's a simple edit or query
 - It can be completed in one action
-- It's just asking a question`;
+- It's just asking a question
+- It's running a command
+
+IMPORTANT: If the user mentions creating/building/making ANY kind of app or application, ALWAYS return needsTodoList: true`;
 
     try {
       const response = await this.ideCore.makeAIRequest(
@@ -115,36 +120,51 @@ A todo list is NOT needed if:
   async generateDynamicTodos(message, intent) {
     console.log('🗂️ Generating dynamic todos with LLM for:', message);
     
-    const todoPrompt = `Create a todo list for this development request. Each todo should be a specific, actionable step.
+    const todoPrompt = `Create a comprehensive todo list for this development request. Break it down into ALL necessary steps, especially for application creation which requires multiple files.
 
 User request: "${message}"
 Original user request context: ${this.lastGeneratedMessage || message}
 
-Respond with JSON array of todos only:
+IMPORTANT: 
+- If creating an application, you MUST create separate todos for EACH file needed
+- For a typical web app, this includes: HTML file, JavaScript/component files, CSS files, package.json, etc.
+- Each file creation should be its own todo step
+- Don't combine multiple files into one todo
+
+Respond with JSON array of todos only (typically 3-10 todos for app creation):
 [
   {
     "id": "unique-id-string",
-    "content": "Clear description of what to do",
+    "content": "Clear description of what to do (be specific about file names)",
     "tool": "appropriate_tool_name",
     "status": "pending"
   }
 ]
 
 Available tools:
-- create_file: Create a new file
+- create_file: Create a new file (use this for EACH file)
 - edit_file: Modify existing file
 - run_command: Execute terminal command
 - chat_response: Provide information or guidance
 - analyze_code: Analyze code structure
 - refactor_code: Improve code quality
 
+Example for a simple app request:
+[
+  {"id": "create-package-json", "content": "Create package.json with project dependencies", "tool": "create_file", "status": "pending"},
+  {"id": "create-index-html", "content": "Create index.html as the main entry point", "tool": "create_file", "status": "pending"},
+  {"id": "create-app-js", "content": "Create App.js with main application logic", "tool": "create_file", "status": "pending"},
+  {"id": "create-styles", "content": "Create styles.css for application styling", "tool": "create_file", "status": "pending"},
+  {"id": "final-review", "content": "Review and test the created application", "tool": "chat_response", "status": "pending"}
+]
+
 Make sure to:
-1. Break down the request into logical, sequential steps
-2. Each step should be specific and actionable
-3. Include all necessary files and setup steps
-4. Order steps by dependencies
-5. Use appropriate tools for each step
-6. Generate IDs that describe the action (e.g., "create-main-component")`;
+1. Create a SEPARATE todo for EACH file that needs to be created
+2. Be specific about file names and their purpose
+3. Order by dependencies (package.json first, then HTML, then JS/components, then styles)
+4. Include setup/configuration files if needed
+5. Add a final review/test step
+6. Generate descriptive IDs (e.g., "create-main-component", "setup-routing", "add-styles")`;
 
     try {
       const response = await this.ideCore.makeAIRequest(
@@ -158,6 +178,11 @@ Make sure to:
 
       const todos = JSON.parse(response);
       console.log(`🗂️ Generated ${todos.length} dynamic todos`);
+      
+      // Ensure we have multiple todos for complex requests
+      if (todos.length === 1 && message.toLowerCase().includes('app')) {
+        console.log('🗂️ Warning: Only one todo generated for app creation, might need to regenerate');
+      }
       
       return todos;
     } catch (error) {
