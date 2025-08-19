@@ -180,58 +180,95 @@ class CommandExecutor {
   /**
    * Check if user is requesting to run/start an app
    */
-  isRunAppRequest(message) {
-    const runPatterns = [
-      'run the app', 'start the app', 'launch the app', 'open the app',
-      'run it', 'start it', 'launch it', 'open it',
-      'can you run', 'please start', 'launch now',
-      'run app', 'start app', 'launch app'
-    ];
-    
-    return runPatterns.some(pattern => message.includes(pattern));
+  async isRunAppRequest(message) {
+    // Let LLM determine if this is a request to run/start an application
+    const prompt = `Is this a request to run, start, launch, or execute an application?
+
+User message: "${message}"
+
+Respond with JSON only:
+{
+  "isRunRequest": true/false
+}`;
+
+    try {
+      const response = await this.ideCore.makeAIRequest(prompt, '', { 
+        model: this.ideCore.selectedModel,
+        temperature: 0.2 
+      });
+      const result = JSON.parse(response);
+      return result.isRunRequest === true;
+    } catch (error) {
+      console.error('Error detecting run request:', error);
+      return false;
+    }
   }
 
   /**
-   * Detect appropriate start command based on project files
+   * Detect appropriate start command based on project files using LLM
    */
-  detectStartCommand() {
+  async detectStartCommand() {
     console.log('🔍 Detecting start command based on project files...');
     
-    // Priority order: package.json > index.html > Python files > default
+    // Get list of files in the project
+    const files = this.getProjectFiles();
     
-    // Check for package.json (Node.js project)
-    if (this.fileExists('package.json')) {
-      console.log('📦 Found package.json - using npm start');
+    const prompt = `Based on these project files, determine the appropriate command to start/run this application.
+
+Project files:
+${files.join('\n')}
+
+Platform: ${this.detectPlatform()}
+
+Respond with JSON only:
+{
+  "command": "the exact command to run",
+  "reason": "brief explanation"
+}
+
+Consider common patterns like:
+- package.json → npm start or npm run dev
+- index.html → open/start command for browser
+- app.py → python/python3 app.py
+- manage.py → python manage.py runserver
+- main.py → python main.py
+- Makefile → make run
+- docker-compose.yml → docker-compose up
+
+Choose the most appropriate based on the files present.`;
+
+    try {
+      const response = await this.ideCore.makeAIRequest(prompt, '', { 
+        model: this.ideCore.selectedModel,
+        temperature: 0.3 
+      });
+      const result = JSON.parse(response);
+      console.log(`📦 LLM detected command: ${result.command} - ${result.reason}`);
+      return result.command;
+    } catch (error) {
+      console.error('Error detecting start command:', error);
+      // Simple fallback
+      if (this.fileExists('package.json')) return 'npm start';
+      if (this.fileExists('index.html')) return this.getPlatformOpenCommand('index.html');
       return 'npm start';
     }
+  }
+  
+  /**
+   * Get list of project files for analysis
+   */
+  getProjectFiles() {
+    const fs = require('fs');
+    const path = require('path');
     
-    // Check for index.html (static web app) - common for client-side apps
-    if (this.fileExists('index.html')) {
-      console.log('🌐 Found index.html - using platform-specific open command');
-      return this.getPlatformOpenCommand('index.html');
+    try {
+      const workingDir = this.ideCore.currentFolder || process.cwd();
+      const files = fs.readdirSync(workingDir);
+      return files.filter(file => !file.startsWith('.'));
+    } catch (error) {
+      console.error('Error reading project files:', error);
+      return [];
     }
-    
-    // Check for app.py (Flask)
-    if (this.fileExists('app.py')) {
-      console.log('🐍 Found app.py - using python command');
-      return this.detectPlatform() === 'darwin' ? 'python3 app.py' : 'python app.py';
-    }
-    
-    // Check for manage.py (Django)
-    if (this.fileExists('manage.py')) {
-      console.log('🐍 Found manage.py - using Django runserver');
-      return this.detectPlatform() === 'darwin' ? 'python3 manage.py runserver' : 'python manage.py runserver';
-    }
-    
-    // Check for main.py (generic Python)
-    if (this.fileExists('main.py')) {
-      console.log('🐍 Found main.py - using python command');
-      return this.detectPlatform() === 'darwin' ? 'python3 main.py' : 'python main.py';
-    }
-    
-    // Default fallback
-    console.log('⚠️ No specific project files found - defaulting to npm start');
-    return 'npm start';
   }
 
   /**

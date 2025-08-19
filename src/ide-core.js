@@ -655,9 +655,7 @@ class MithrilAIIDE {
 - Selected text preview: "${context.selectedTextInfo.text.substring(0, 100)}${context.selectedTextInfo.text.length > 100 ? '...' : ''}"`;
     }
 
-    // Detect context clues in the user message
-    const hasContextualWords = /\b(this|these|that|those|the|selected|highlighted|current)\b/i.test(userMessage);
-    const hasModificationWords = /\b(change|make|set|update|modify|fix|refactor|optimize|edit|color|theme|style)\b/i.test(userMessage);
+    // Let the LLM analyze all context and intent - no hardcoded patterns
     
     const systemPrompt = `You are an intent detection system for an AI IDE. Analyze the user's request and respond with JSON.
 
@@ -669,36 +667,21 @@ User message: "${userMessage}"
 
 CRITICAL RULES FOR INTENT DETECTION:
 
-1. **COMMAND EXECUTION - HIGHEST PRIORITY**: If user wants to execute ANY terminal/shell command:
-   - Use "run_command" for: "install [package]", "pip install", "npm install", "yarn add"
-   - Use "run_command" for: "curl", "wget", "git clone", "git push", "git pull"
-   - Use "run_command" for: "run the app", "start the app", "launch", "serve"
-   - Use "run_command" for: "docker run", "docker build", "make", "cmake"
-   - Use "run_command" for: "python", "node", "java", "go run", "cargo run"
-   - Use "run_command" for: "cd", "ls", "mkdir", "cp", "mv", ANY shell command
-   - CRITICAL: If message contains executable commands, package managers, or system tools → "run_command"
+1. **COMMAND EXECUTION - HIGHEST PRIORITY**: If the user wants to execute a terminal/shell command, use "run_command". Analyze the intent to determine if they want to run a command, install packages, or execute system operations.
 
-2. **FILE READING/ANALYSIS**: If user asks about file content with phrases like "what is in this file", "show me this file", "what does this file contain", "tell me about this file":
-   - Use "read_file" to read and display the current file content
-   - This applies when a file is open and user wants to see/understand its contents
+2. **FILE READING/ANALYSIS**: If the user wants to understand or view file contents, use "read_file". Analyze the intent to determine if they're asking about the content of a file.
 
-3. **SELECTION CONTEXT PRIORITY**: If text is selected AND user uses contextual words like "this", "these", "that", "the selected", etc., they are referring to the selected text:
-   - Use "refactor_code" for: "refactor this", "improve these", "clean this up"
-   - Use "fix_issues" for: "fix this", "fix these errors", "debug this"
-   - Use "optimize_code" for: "optimize this", "make this faster", "improve performance"
-   - Use "edit_file" for: "change this", "make this red", "update these colors", "modify this"
+3. **SELECTION CONTEXT**: If text is selected, analyze whether the user is referring to the selected text based on the overall context of their message. Consider the intent and meaning rather than specific words.
 
-4. **FILE CONTEXT**: If a file is open but no selection, and user wants to modify the file:
-   - Use "edit_file" for file-wide changes like "make this file pink theme", "update the colors"
+4. **FILE CONTEXT**: If a file is open, consider whether the user wants to modify, analyze, or ask about the file based on their intent.
 
-5. **SPECIFIC OVERRIDES**:
-   - Color/theme changes to selected text → "edit_file" with target "selection"  
-   - Code improvements to selected text → "refactor_code"
-   - Bug fixes to selected text → "fix_issues"
-   - Performance improvements → "optimize_code"
-   - Questions about code → "chat_response"
+5. **TOOL SELECTION**: Choose the appropriate tool based on the user's intent and context:
+   - Analyze the semantic meaning of the request
+   - Consider the current context (selected text, open file, etc.)
+   - Match the intent to the most appropriate tool
+   - Don't rely on specific keywords, understand the actual intent
 
-6. **FALLBACK**: If unclear, but file is open → "edit_file"
+6. **FALLBACK**: If the intent is unclear, choose the most likely tool based on the overall context
 
 Respond with JSON only:
 {

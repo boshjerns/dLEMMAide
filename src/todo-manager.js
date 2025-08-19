@@ -13,71 +13,7 @@ class TodoListManager {
     this.isProcessingTodos = false;
     this.todoContainer = null;
     
-    // Task complexity patterns for detection
-    this.complexityPatterns = {
-      multiStep: [
-        /create.*application/i,
-        /build.*from.*scratch/i,
-        /implement.*system/i,
-        /set.*up.*project/i,
-        /make.*react.*app/i,
-        /make.*.*app.*react/i,
-        /create.*.*app.*react/i,
-        /build.*.*app.*react/i,
-        /develop.*website/i,
-        /create.*component.*with/i,
-        /build.*api.*with/i,
-        /setup.*database/i,
-        /configure.*environment/i,
-        /integrate.*with/i,
-        /refactor.*entire/i,
-        /migrate.*from.*to/i,
-        /optimize.*performance/i,
-        /add.*authentication/i,
-        /implement.*routing/i,
-        /create.*dashboard/i,
-        /build.*backend/i,
-        /setup.*deployment/i,
-        /make.*.*app.*in.*react/i,
-        /create.*.*app.*in.*react/i,
-        /build.*.*app.*in.*react/i,
-
-        /todo.*app/i,
-        /chat.*app/i,
-        /blog.*app/i,
-        /ecommerce.*app/i,
-        /shopping.*app/i,
-        /social.*app/i,
-        /weather.*app/i,
-        /music.*app/i,
-        /video.*app/i,
-        /photo.*app/i,
-        /game.*app/i,
-        /productivity.*app/i,
-        /finance.*app/i,
-        /health.*app/i,
-        /fitness.*app/i,
-        /education.*app/i,
-        /news.*app/i,
-        /recipe.*app/i,
-        /travel.*app/i,
-        /make.*.*in.*full/i,
-        /create.*.*in.*full/i,
-        /build.*.*in.*full/i,
-        /full.*application/i,
-        /complete.*application/i,
-        /entire.*application/i
-      ],
-      stepIndicators: [
-        /step.*by.*step/i,
-        /first.*then.*finally/i,
-        /\d+\.\s+/g, // Numbered lists
-        /then|next|after|finally/i,
-        /multiple.*files/i,
-        /several.*components/i,
-        /various.*parts/i
-      ]
-    };
+    // No more hardcoded patterns - everything will be determined by LLM dynamically
 
     this.init();
   }
@@ -90,82 +26,57 @@ class TodoListManager {
 
   /**
    * Analyze user input to determine if it needs a todo list
+   * Let the LLM decide based on the complexity and nature of the request
    */
-  shouldCreateTodoList(userMessage, intent) {
+  async shouldCreateTodoList(userMessage, intent) {
     console.log('🗂️ Analyzing task complexity for:', userMessage);
     
-    // Check for complexity patterns
-    const isComplex = this.detectComplexity(userMessage);
-    const hasMultipleSteps = this.detectMultipleSteps(userMessage);
-    const isLongRequest = userMessage.length > 100;
-    const hasMultipleActions = this.hasMultipleActions(userMessage);
-    const isAppCreation = this.detectAppCreation(userMessage);
-    
-    console.log('🗂️ Complexity analysis results:');
-    console.log('🗂️ - Is complex pattern:', isComplex);
-    console.log('🗂️ - Has multiple steps:', hasMultipleSteps);
-    console.log('🗂️ - Is long request:', isLongRequest);
-    console.log('🗂️ - Has multiple actions:', hasMultipleActions);
-    console.log('🗂️ - Is app creation:', isAppCreation);
-    console.log('🗂️ - Intent tool:', intent?.tool);
-    
-    // Always create todos for complex tool operations
-    if (intent?.tool === 'create_file' && (isComplex || isAppCreation)) {
-      console.log('🗂️ ✅ Complex create_file operation detected');
-      return true;
+    // Let the LLM determine if this request needs a todo list
+    const analysisPrompt = `Analyze if this user request requires a todo list breakdown.
+
+User request: "${userMessage}"
+
+Intent detected: ${JSON.stringify(intent || {})}
+
+Respond with JSON only:
+{
+  "needsTodoList": true/false,
+  "reason": "brief explanation",
+  "estimatedSteps": number
+}
+
+A todo list is needed if:
+- The request requires creating multiple files
+- Multiple distinct operations are needed
+- There are dependencies between steps
+- It's building a complete application or feature
+- The request involves complex setup or configuration
+
+A todo list is NOT needed if:
+- It's a single file operation
+- It's a simple edit or query
+- It can be completed in one action
+- It's just asking a question`;
+
+    try {
+      const response = await this.ideCore.makeAIRequest(
+        analysisPrompt,
+        '',
+        { 
+          model: this.ideCore.selectedModel,
+          temperature: 0.3
+        }
+      );
+
+      const analysis = JSON.parse(response);
+      console.log('🗂️ LLM complexity analysis:', analysis);
+      
+      return analysis.needsTodoList === true;
+    } catch (error) {
+      console.error('🗂️ Error analyzing complexity:', error);
+      // Simple fallback without hardcoded patterns
+      return false;
     }
-
-    // Create todo list if any complexity indicators are found
-    const shouldCreate = isComplex || hasMultipleSteps || isAppCreation || (isLongRequest && hasMultipleActions);
-    console.log('🗂️ Final decision:', shouldCreate ? 'CREATE TODO LIST' : 'NO TODO LIST NEEDED');
-    
-    return shouldCreate;
-  }
-
-  /**
-   * Detect if message indicates complex task
-   */
-  detectComplexity(message) {
-    return this.complexityPatterns.multiStep.some(pattern => pattern.test(message));
-  }
-
-  /**
-   * Detect if message has multiple steps
-   */
-  detectMultipleSteps(message) {
-    const stepIndicators = this.complexityPatterns.stepIndicators.some(pattern => pattern.test(message));
-    const hasNumbers = /\d+\.\s+.*\d+\.\s+/g.test(message); // Multiple numbered items
-    const hasConnectors = (message.match(/\band\b|\bthen\b|\bnext\b|\bafter\b/gi) || []).length >= 2;
-    
-    return stepIndicators || hasNumbers || hasConnectors;
-  }
-
-  /**
-   * Check if message implies multiple actions
-   */
-  hasMultipleActions(message) {
-    const actionWords = ['create', 'build', 'add', 'implement', 'setup', 'configure', 'install', 'develop', 'make'];
-    const foundActions = actionWords.filter(action => message.toLowerCase().includes(action));
-    return foundActions.length >= 2;
-  }
-
-  /**
-   * Detect if message is requesting app creation
-   */
-  detectAppCreation(message) {
-    const appPatterns = [
-      /.*app/i,
-      /application/i,
-      /make.*.*in.*react/i,
-      /create.*.*in.*react/i,
-      /build.*.*in.*react/i,
-      /in.*full/i,
-      /full.*stack/i,
-      /complete.*project/i,
-      /entire.*project/i
-    ];
-    
-    return appPatterns.some(pattern => pattern.test(message));
   }
 
   /**
@@ -183,19 +94,9 @@ class TodoListManager {
     
     let todos = [];
 
-    // Handle different types of complex requests - all dynamically
-    // Remove hardcoded calendar app detection
-    if (intent?.tool === 'create_file' || userMessage.toLowerCase().includes('react app')) {
-      todos = this.generateReactAppTodos(userMessage);
-    } else if (userMessage.toLowerCase().includes('website') || userMessage.toLowerCase().includes('web app')) {
-      todos = this.generateWebsiteTodos(userMessage);
-    } else if (userMessage.toLowerCase().includes('api') || userMessage.toLowerCase().includes('backend')) {
-      todos = this.generateAPITodos(userMessage);
-    } else if (userMessage.toLowerCase().includes('component')) {
-      todos = this.generateComponentTodos(userMessage);
-    } else {
-      todos = this.generateGenericTodos(userMessage, intent);
-    }
+    // Let the LLM generate appropriate todos based on the request
+    // No more hardcoded app type detection
+    todos = await this.generateDynamicTodos(userMessage, intent);
 
     // Set the first todo as in_progress
     if (todos.length > 0) {
@@ -208,10 +109,72 @@ class TodoListManager {
     return todos;
   }
 
-  // Removed hardcoded calendar app todos - now using dynamic generation
+  /**
+   * Generate todos dynamically based on LLM analysis
+   */
+  async generateDynamicTodos(message, intent) {
+    console.log('🗂️ Generating dynamic todos with LLM for:', message);
+    
+    const todoPrompt = `Create a todo list for this development request. Each todo should be a specific, actionable step.
+
+User request: "${message}"
+Original user request context: ${this.lastGeneratedMessage || message}
+
+Respond with JSON array of todos only:
+[
+  {
+    "id": "unique-id-string",
+    "content": "Clear description of what to do",
+    "tool": "appropriate_tool_name",
+    "status": "pending"
+  }
+]
+
+Available tools:
+- create_file: Create a new file
+- edit_file: Modify existing file
+- run_command: Execute terminal command
+- chat_response: Provide information or guidance
+- analyze_code: Analyze code structure
+- refactor_code: Improve code quality
+
+Make sure to:
+1. Break down the request into logical, sequential steps
+2. Each step should be specific and actionable
+3. Include all necessary files and setup steps
+4. Order steps by dependencies
+5. Use appropriate tools for each step
+6. Generate IDs that describe the action (e.g., "create-main-component")`;
+
+    try {
+      const response = await this.ideCore.makeAIRequest(
+        todoPrompt,
+        '',
+        { 
+          model: this.ideCore.selectedModel,
+          temperature: 0.5
+        }
+      );
+
+      const todos = JSON.parse(response);
+      console.log(`🗂️ Generated ${todos.length} dynamic todos`);
+      
+      return todos;
+    } catch (error) {
+      console.error('🗂️ Error generating dynamic todos:', error);
+      // Fallback to a simple single todo
+      return [{
+        id: 'execute-request',
+        content: message,
+        tool: intent?.tool || 'chat_response',
+        status: 'pending'
+      }];
+    }
+  }
 
   /**
-   * Generate todos for React application creation
+   * DEPRECATED: Generate todos for React application creation
+   * Keeping for backward compatibility but routing to dynamic generation
    */
   generateReactAppTodos(message) {
     const todos = [
